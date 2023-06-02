@@ -1,0 +1,12 @@
+[package]
+name = "mina"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = [".", "core", "macros"]
+default-members = [".", "core", "macros"]
+
+[dependencies]
+mina_core = { path = "core" }
+mina_macros = { path = "macros" }
