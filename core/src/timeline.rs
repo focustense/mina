@@ -38,3 +38,11 @@ impl<Data> Keyframe<Data> {
         }
     }
 }
+
+#[derive(Clone, Debug, Default)]
+pub enum Repeat {
+    #[default]
+    None,
+    Times(u32),
+    Infinite,
+}
