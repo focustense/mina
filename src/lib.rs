@@ -1,6 +1,6 @@
 pub use mina_core::{
     easing::{Easing, EasingFunction},
     interpolation::Lerp,
-    timeline::Timeline,
+    timeline::{Repeat, Timeline, TimelineConfiguration},
 };
 pub use mina_macros::Animate;

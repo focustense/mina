@@ -1,3 +1,5 @@
+//! Traits and implementations related to interpolation of animatable values.
+
 use num_traits::{FromPrimitive, ToPrimitive};
 
 /// Trait for a type that supports the standard `lerp` (**l**inear int**erp**olation) operation.

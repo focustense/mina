@@ -1,3 +1,5 @@
+//! Internal helper module for relations between real time units and normalized timelines.
+
 use crate::timeline::Repeat;
 
 /// Describes the time scale of a [Timeline](crate::timeline::Timeline).
@@ -27,8 +29,21 @@ impl Default for TimeScale {
 }
 
 impl TimeScale {
-    #[cfg(test)]
-    fn new(duration: f32, delay: f32, repeat: Repeat, reverse: bool) -> Self {
+    /// Creates a new [TimeScale].
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - Duration of an animation cycle, including the reversal time if `reverse` is
+    ///   `true`, but *not* including the `delay`. If `repeat` is [`Repeat::None`], then this total
+    ///   animation duration.
+    /// * `delay` - Time to wait, in the same units as `duration`, before starting the animation.
+    ///   This is a flat delay and only applies once to the entire timeline - i.e. it is _not_
+    ///   repeated on every cycle.
+    /// * `repeat` - Whether and how many times the animation should repeat.
+    /// * `reverse` - Whether the animation loops instantly from the 100% position back to the 0%
+    ///   position, assuming it repeats, or animates backward to 0% during the second half of each
+    ///   cycle using the same easing function as the forward half.
+    pub fn new(duration: f32, delay: f32, repeat: Repeat, reverse: bool) -> Self {
         Self {
             duration,
             delay,
@@ -62,10 +77,10 @@ impl TimeScale {
             return Err(TimeScaleOutOfBounds::NotStarted);
         }
         let cycle_time = match self.repeat {
-            Repeat::None if time > self.duration => Err(TimeScaleOutOfBounds::Ended),
+            Repeat::None if time > self.duration => Err(self.err_ended()),
             Repeat::None => Ok(time),
             Repeat::Times(times) if time > self.duration * (times + 1) as f32 => {
-                Err(TimeScaleOutOfBounds::Ended)
+                Err(self.err_ended())
             }
             Repeat::Times(_) | Repeat::Infinite => Ok({
                 // Doing the "simple" modulo arithmetic can produce some unintuitive results, since
@@ -83,7 +98,11 @@ impl TimeScale {
                 // are usually going to be blended with a state-dependent start value anyway, it
                 // makes somewhat more sense to focus on getting the end value correct.
                 let (quot, rem) = (time / self.duration, time % self.duration);
-                if rem == 0.0 && quot >= 1.0 { self.duration } else { rem }
+                if rem == 0.0 && quot >= 1.0 {
+                    self.duration
+                } else {
+                    rem
+                }
             }),
         }? / self.duration;
         let normalized_time = match self.reverse {
@@ -93,21 +112,25 @@ impl TimeScale {
         };
         Ok(normalized_time)
     }
+
+    fn err_ended(&self) -> TimeScaleOutOfBounds {
+        let normalized_time = if self.reverse { 0.0 } else { 1.0 };
+        TimeScaleOutOfBounds::Ended(normalized_time)
+    }
 }
 
 /// Error produced by [`TimeScale::get_normalized_time`], specifying which boundary is exceeded by
 /// a given time.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum TimeScaleOutOfBounds {
     /// The timeline has not started at the specified time, either because the time was negative or
     /// because it is within the configured delay period. When determining animator values, this can
     /// be considered equivalent to a normalized time of `0.0`.
     NotStarted,
     /// The timeline has already ended at the specified time, i.e. it does not loop infinitely and
-    /// the specified time is after the last loop ends. When determining animator values, this can
-    /// be considered equivalent to a normalized time of `1.0` if the timescale is forward-only, or
-    /// `0.0` if the timeline reverses.
-    Ended,
+    /// the specified time is after the last loop ends. Holds a value indicating the normalized time
+    /// reached at the end, which is either `0.0` if the timeline reverses or `1.0` if it does not.
+    Ended(f32),
 }
 
 #[cfg(test)]
@@ -152,7 +175,7 @@ mod tests {
         assert_eq!(timescale.get_normalized_time(20.0), Ok(1.0));
         assert_eq!(
             timescale.get_normalized_time(21.0),
-            Err(TimeScaleOutOfBounds::Ended)
+            Err(TimeScaleOutOfBounds::Ended(1.0))
         );
     }
 
@@ -172,7 +195,7 @@ mod tests {
         assert_eq!(timescale.get_normalized_time(60.0), Ok(1.0));
         assert_eq!(
             timescale.get_normalized_time(61.0),
-            Err(TimeScaleOutOfBounds::Ended)
+            Err(TimeScaleOutOfBounds::Ended(1.0))
         );
     }
 
@@ -208,5 +231,15 @@ mod tests {
         assert_eq!(timescale.get_normalized_time(35.0), Ok(0.5));
         assert_eq!(timescale.get_normalized_time(37.5), Ok(0.25));
         assert_eq!(timescale.get_normalized_time(40.0), Ok(0.0));
+    }
+
+    #[test]
+    fn when_reverse_then_ends_at_zero() {
+        let timescale = TimeScale::new(20.0, 0.0, Repeat::None, true);
+
+        assert_eq!(
+            timescale.get_normalized_time(25.0),
+            Err(TimeScaleOutOfBounds::Ended(0.0))
+        );
     }
 }

@@ -51,10 +51,8 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
     /// * `default_value` - Value of the timeline at the 0% (`0.0`) position, **if and only if**
     ///   the `keyframes` do not start at 0%. Otherwise, this argument is ignored.
     ///
-    /// * `default_easing` - Type of easing that will be used from the start of the timeline until
-    ///   a frame overrides it with its own [`Easing`]. Once a frame specifies its own easing, that
-    ///   becomes the new default until another frame overrides it again, etc. If no keyframes
-    ///   specify their own easing, then this easing applies to every frame.
+    /// * `default_easing` - Default easing to use. See
+    ///   [TimelineConfiguration::default_easing](crate::timeline::TimelineConfiguration::default_easing).
     pub fn from_keyframes<'a, Data: 'a, ValueFn>(
         keyframes: impl IntoIterator<Item = &'a Keyframe<Data>>,
         default_value: Value,
@@ -87,7 +85,7 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
                     current_easing.clone(),
                 ));
             }
-            frame_index_map.push(converted_frames.len() - 1);
+            frame_index_map.push(converted_frames.len().max(1) - 1);
         }
         let trailing_frame = match converted_frames.last() {
             Some(frame) if frame.normalized_time < 1.0 =>
@@ -323,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn when_keyframe_at_zero_then_interpolates_from_first_keyframe() {
+    fn when_full_keyframe_at_zero_then_interpolates_from_first_keyframe() {
         let keyframes = vec![
             Keyframe::new(0.0, TestKeyframeData::full(10, 20.0), None),
             Keyframe::new(0.4, TestKeyframeData::full(50, 200.0), None),
@@ -332,6 +330,19 @@ mod tests {
 
         assert_eq!(timeline.values_at(0.0), TestValues::new(10, 20.0));
         assert_eq!(timeline.values_at(0.2), TestValues::new(30, 110.0));
+        assert_eq!(timeline.values_at(0.4), TestValues::new(50, 200.0));
+    }
+
+    #[test]
+    fn when_partial_keyframe_at_zero_then_interpolates_from_defaults_and_first_keyframe() {
+        let keyframes = vec![
+            Keyframe::new(0.0, TestKeyframeData::new(Some(10), None), None),
+            Keyframe::new(0.4, TestKeyframeData::full(50, 200.0), None),
+        ];
+        let timeline = TestTimeline::new(keyframes, Easing::default());
+
+        assert_eq!(timeline.values_at(0.0), TestValues::new(10, 0.0));
+        assert_eq!(timeline.values_at(0.2), TestValues::new(30, 100.0));
         assert_eq!(timeline.values_at(0.4), TestValues::new(50, 200.0));
     }
 

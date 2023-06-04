@@ -1,3 +1,6 @@
+//! Contains the [`Easing`] enum which defines many standard easing types available for animations,
+//! as well as an [`EasingFunction`] trait for defining custom easings.
+
 use dyn_clone::{clone_trait_object, DynClone};
 use lazy_static::lazy_static;
 use lyon_geom::{CubicBezierSegment, Point};
