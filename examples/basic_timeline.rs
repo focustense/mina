@@ -1,4 +1,4 @@
-use mina::{Animate, Easing, Repeat, Timeline, TimelineBuilder};
+use mina::prelude::*;
 use nannou::prelude::*;
 
 /// Demonstrates creation and use of a simple standalone timeline:

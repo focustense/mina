@@ -1,3 +1,5 @@
+pub mod prelude;
+
 pub use mina_core::{
     easing::{Easing, EasingFunction},
     interpolation::Lerp,

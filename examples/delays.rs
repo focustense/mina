@@ -1,4 +1,4 @@
-use mina::{Animate, Easing, KeyframeBuilder, Repeat, Timeline, TimelineBuilder};
+use mina::prelude::*;
 use nannou::prelude::*;
 
 /// Demonstrates different ways of handling delays, and their practical uses.
