@@ -1,7 +1,7 @@
 //! Creation and consumption of [`Timeline`] instances.
 
 use crate::easing::Easing;
-use crate::time_scale::TimeScale;
+use crate::time_scale::{TimeScale, TimeScaleOutOfBounds};
 use std::fmt::Debug;
 
 /// An animator timeline.
@@ -233,4 +233,32 @@ pub enum Repeat {
     /// Animation repeats infinitely and never ends, looping or reversing back to the beginning each
     /// time it repeats.
     Infinite,
+}
+
+/// Helper function typically used by [`Timeline`] implementations at the beginning of their
+/// [`values_at`](Timeline::values_at) method, which performs lookup tasks common to all timelines,
+/// including converting real time to normalized time and finding the closest frame.
+///
+/// Encapsulates all of the generic logic that does _not_ require knowing the specific
+/// [SubTimeline](crate::timeline_helpers::SubTimeline) fields and types.
+pub fn prepare_frame(
+    time: f32,
+    boundary_times: &[f32],
+    timescale: &TimeScale,
+) -> Option<(f32, usize)> {
+    if boundary_times.is_empty() {
+        return None;
+    }
+    let normalized_time = match timescale.get_normalized_time(time) {
+        Ok(t) => t,
+        Err(e) => match e {
+            TimeScaleOutOfBounds::NotStarted => 0.0,
+            TimeScaleOutOfBounds::Ended(t) => t,
+        },
+    };
+    let frame_index = match boundary_times.binary_search_by(|t| t.total_cmp(&normalized_time)) {
+        Ok(index) => index,
+        Err(next_index) => next_index.max(1) - 1,
+    };
+    Some((normalized_time, frame_index))
 }

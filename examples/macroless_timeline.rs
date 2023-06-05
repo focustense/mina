@@ -1,7 +1,9 @@
-use mina::{Easing, Repeat, Timeline, TimelineConfiguration};
+use mina::{Easing, Repeat, Timeline, TimelineBuilder, TimelineConfiguration};
 use mina_core::{
-    time_scale::{TimeScale, TimeScaleOutOfBounds},
-    timeline::{Keyframe, KeyframeBuilder, TimelineBuilder, TimelineBuilderArguments},
+    time_scale::TimeScale,
+    timeline::{
+        prepare_frame, Keyframe, KeyframeBuilder, TimelineBuilderArguments,
+    },
     timeline_helpers::SubTimeline,
 };
 
@@ -55,22 +57,10 @@ impl Timeline for StyleTimeline {
 
     fn values_at(&self, time: f32) -> Self::Values {
         let mut values = Self::Values::default();
-        if self.boundary_times.is_empty() {
+        let Some((normalized_time, frame_index)) = prepare_frame(
+            time, self.boundary_times.as_slice(), &self.timescale
+        ) else {
             return values;
-        }
-        let normalized_time = match self.timescale.get_normalized_time(time) {
-            Ok(t) => t,
-            Err(e) => match e {
-                TimeScaleOutOfBounds::NotStarted => 0.0,
-                TimeScaleOutOfBounds::Ended(t) => t,
-            },
-        };
-        let frame_index = match self
-            .boundary_times
-            .binary_search_by(|t| t.total_cmp(&normalized_time))
-        {
-            Ok(index) => index,
-            Err(next_index) => next_index.max(1) - 1,
         };
         if let Some(x) = self.t_x.value_at(normalized_time, frame_index) {
             values.x = x;
