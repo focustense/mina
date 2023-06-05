@@ -11,3 +11,4 @@ num-traits = "0.2.15"
 
 [dev-dependencies]
 approx = "0.5.1"
+ordered-float = "3.7.0"

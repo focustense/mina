@@ -224,6 +224,54 @@ pub trait KeyframeBuilder {
     fn easing(self, easing: Easing) -> Self;
 }
 
+/// A [Timeline] that is composed of multiple inner timelines.
+///
+/// Merged timelines are useful in scenarios where a single animation behavior is difficult to
+/// specify purely in terms of keyframes - for example, if different properties should animate with
+/// different easing functions but share the same keyframe times, or if there will be different
+/// animations that each have entirely different timescales, e.g. one loops/reverses and the other
+/// does not, or the cycle durations are different.
+///
+/// A common example would be a spinner-like widget that fades in briefly, but also has a repeating
+/// progress animation (say rotation). This relationship cannot be described by the keyframes of a
+/// single timeline because [`repeat`](TimelineConfiguration::repeat) and
+/// [`reverse`](TimelineConfiguration::reverse) are determined for the entire timeline. However, it
+/// can be easily represented by a merged timeline whose constituent parts each have keyframes
+/// referring to only one of the "parts", either rotation or alpha.
+///
+/// Refer to the tests and the `merged_timeline` example for details and usage.
+pub struct MergedTimeline<T: Timeline> {
+    timelines: Vec<T>,
+}
+
+impl<T: Timeline> MergedTimeline<T> {
+    /// Creates a [`MergedTimeline`] using a sequence of component [`Timeline`]s.
+    ///
+    /// Timelines are queried in sequential order, meaning that if a merged timeline is created from
+    /// `[t1, t2]`, and they each have a value for property `foo` at a given point in time, then
+    /// only the value from `t2` is used; the values from `t1` and `t2` are **not** blended in any
+    /// way. If `t2` does not have a value for the property, but `t1` does, then `t1` is used.
+    ///
+    /// Any number of timelines can be merged, but generally they should not overlap in the
+    /// properties that they animate, otherwise the above-mentioned precedence rule above may
+    /// produce unexpected outcomes.
+    pub fn of(timelines: impl IntoIterator<Item = T>) -> Self {
+        Self {
+            timelines: timelines.into_iter().collect(),
+        }
+    }
+}
+
+impl<T: Timeline> Timeline for MergedTimeline<T> {
+    type Target = T::Target;
+
+    fn update(&self, values: &mut Self::Target, time: f32) {
+        for timeline in &self.timelines {
+            timeline.update(values, time);
+        }
+    }
+}
+
 /// Describes the looping behavior of an animation timeline.
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Repeat {
@@ -264,4 +312,112 @@ pub fn prepare_frame(
         Err(next_index) => next_index.max(1) - 1,
     };
     Some((normalized_time, frame_index))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ordered_float::OrderedFloat;
+    use std::collections::HashMap;
+
+    #[derive(Debug, Default, PartialEq)]
+    struct TestValues {
+        foo: u8,
+        bar: u32,
+        baz: f32,
+    }
+
+    // Setting up a timeline without proc macros requires a lot of boilerplate, so instead we
+    // use fake timelines here. The stub is only capable of producing exact matches, i.e. does not
+    // interpolate between times.
+    struct StubTimeline {
+        frames: HashMap<OrderedFloat<f32>, StubFrame>,
+    }
+
+    impl StubTimeline {
+        fn new() -> Self {
+            Self {
+                frames: HashMap::new(),
+            }
+        }
+
+        fn add_frame(
+            mut self,
+            time: f32,
+            foo: Option<u8>,
+            bar: Option<u32>,
+            baz: Option<f32>,
+        ) -> Self {
+            self.frames
+                .insert(OrderedFloat(time), StubFrame { foo, bar, baz });
+            self
+        }
+    }
+
+    impl Timeline for StubTimeline {
+        type Target = TestValues;
+
+        fn update(&self, values: &mut Self::Target, time: f32) {
+            if let Some(frame) = self.frames.get(&OrderedFloat(time)) {
+                if let Some(foo) = frame.foo {
+                    values.foo = foo;
+                }
+                if let Some(bar) = frame.bar {
+                    values.bar = bar;
+                }
+                if let Some(baz) = frame.baz {
+                    values.baz = baz;
+                }
+            }
+        }
+    }
+
+    struct StubFrame {
+        foo: Option<u8>,
+        bar: Option<u32>,
+        baz: Option<f32>,
+    }
+
+    #[test]
+    fn merged_timeline_delegates_to_component_timelines() {
+        let timeline1 = StubTimeline::new()
+            .add_frame(0.1, Some(10), Some(555), Some(0.12))
+            .add_frame(0.2, Some(20), None, None)
+            .add_frame(0.3, Some(30), Some(777), None);
+        let timeline2 = StubTimeline::new()
+            .add_frame(0.1, None, None, Some(1.5))
+            .add_frame(0.2, None, None, Some(2.5))
+            .add_frame(0.3, None, None, Some(6.8));
+        let merged_timeline = MergedTimeline::of([timeline1, timeline2]);
+
+        let mut values = <[TestValues; 3]>::default();
+        merged_timeline.update(&mut values[0], 0.1);
+        merged_timeline.update(&mut values[1], 0.2);
+        merged_timeline.update(&mut values[2], 0.3);
+
+        assert_eq!(
+            values[0],
+            TestValues {
+                foo: 10,
+                bar: 555,
+                baz: 1.5
+            }
+        );
+        assert_eq!(
+            values[1],
+            TestValues {
+                foo: 20,
+                bar: 0,
+                baz: 2.5
+            }
+        );
+        assert_eq!(
+            values[2],
+            TestValues {
+                foo: 30,
+                bar: 777,
+                baz: 6.8
+            }
+        );
+    }
 }
