@@ -10,3 +10,6 @@ default-members = [".", "core", "macros"]
 [dependencies]
 mina_core = { path = "core" }
 mina_macros = { path = "macros" }
+
+[dev-dependencies]
+nannou = "0.18.1"
