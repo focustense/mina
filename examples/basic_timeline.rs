@@ -1,6 +1,17 @@
 use mina::{Animate, Easing, Repeat, Timeline, TimelineBuilder};
 use nannou::prelude::*;
 
+/// Demonstrates creation and use of a simple standalone timeline:
+///
+/// 1. Define some appearance struct (here we use [`Shape`]) and add `#[derive(Animate)]`.
+/// 2. Optionally, decorate animatable properties with `#[animate]` if only some of the properties
+///    should animate (here, [Shape::size] is not animatable).
+/// 3. Construct a timeline using the generated `timeline` helper ([Shape::timeline] in this
+///    example), using the generated `keyframe` helper ([Shape::keyframe]) to add the keyframes.
+/// 4. At some periodic interval, which is usually provided by an underlying framework (bevy, iced,
+///    etc., in this case nannou's `update` function), use the timeline to update an instance of the
+///    animated type with [`Timeline::update`].
+
 fn main() {
     nannou::app(model).update(update).run();
 }
