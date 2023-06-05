@@ -104,7 +104,7 @@ impl TimelineBuilder<StyleTimeline> for TimelineConfiguration<StyleKeyframeData>
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct StyleKeyframeData {
     x: Option<u32>,
     y: Option<u32>,

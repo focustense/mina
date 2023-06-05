@@ -39,7 +39,7 @@ pub trait TimelineBuilder<T: Timeline> {
 /// actually create its timeline, without having to expose the private data of a
 /// [`TimelineConfiguration`] to external crates. It is used by the
 /// [`Animate`](../../mina_macros/derive.Animate.html) macro.
-pub struct TimelineBuilderArguments<Data> {
+pub struct TimelineBuilderArguments<Data: Clone + Debug> {
     /// The normalized times corresponding to the original [`Keyframe`] positions. This has the same
     /// times and order as the original keyframes but does not include any other keyframe data,
     /// since the other keyframe data gets parsed into
@@ -56,7 +56,7 @@ pub struct TimelineBuilderArguments<Data> {
     pub timescale: TimeScale,
 }
 
-impl<Data> From<TimelineConfiguration<Data>> for TimelineBuilderArguments<Data> {
+impl<Data: Clone + Debug> From<TimelineConfiguration<Data>> for TimelineBuilderArguments<Data> {
     fn from(value: TimelineConfiguration<Data>) -> Self {
         Self {
             timescale: value.create_timescale(),
@@ -76,7 +76,8 @@ impl<Data> From<TimelineConfiguration<Data>> for TimelineBuilderArguments<Data> 
 /// keyframe type corresponds to the specific timeline being created.
 ///
 /// Refer to the `macroless_timeline` example for details on how the two are connected.
-pub struct TimelineConfiguration<Data> {
+#[derive(Clone, Debug)]
+pub struct TimelineConfiguration<Data: Clone + Debug> {
     default_easing: Easing,
     delay_seconds: f32,
     duration_seconds: f32,
@@ -85,7 +86,7 @@ pub struct TimelineConfiguration<Data> {
     reverse: bool,
 }
 
-impl<Data> Default for TimelineConfiguration<Data> {
+impl<Data: Clone + Debug> Default for TimelineConfiguration<Data> {
     fn default() -> Self {
         Self {
             default_easing: Easing::default(),
@@ -98,7 +99,7 @@ impl<Data> Default for TimelineConfiguration<Data> {
     }
 }
 
-impl<Data> TimelineConfiguration<Data> {
+impl<Data: Clone + Debug> TimelineConfiguration<Data> {
     /// Configures the default easing for this timeline.
     ///
     /// The default easing is applied until a [`Keyframe`] overrides it. Once a frame specifies its
@@ -174,13 +175,14 @@ impl<Data> TimelineConfiguration<Data> {
 /// instances. They are not meant to be created or consumed directly. Instead, the `Animate`
 /// decorated type will expose trait functions for creating keyframes as part of the timeline
 /// builder.
-pub struct Keyframe<Data> {
+#[derive(Clone, Debug)]
+pub struct Keyframe<Data: Clone> {
     pub(super) data: Data,
     pub(super) easing: Option<Easing>,
     pub(super) normalized_time: f32,
 }
 
-impl<Data> Keyframe<Data> {
+impl<Data: Clone> Keyframe<Data> {
     /// Creates a new keyframe.
     ///
     /// This function is intended for use by [`KeyframeBuilder`] implementations and should normally
@@ -211,7 +213,7 @@ impl<Data> Keyframe<Data> {
 /// property values; this trait only encapsulates the behavior common to all keyframes.
 pub trait KeyframeBuilder {
     /// Data type (animation properties) that the keyframe will hold.
-    type Data;
+    type Data: Clone + Debug;
 
     /// Creates a [`Keyframe`] from this builder.
     fn build(&self) -> Keyframe<Self::Data>;
