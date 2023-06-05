@@ -2,8 +2,8 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, parse_quote, spanned::Spanned, Data, DeriveInput, Error, Field, Fields,
-    Meta, Path, Result, Visibility,
+    parse_macro_input, spanned::Spanned, Data, DeriveInput, Error, Field, Fields, Meta, Path,
+    Result, Visibility,
 };
 
 pub fn animate_impl(input: TokenStream) -> TokenStream {
@@ -42,14 +42,12 @@ fn expand_animate(input: DeriveInput) -> Result<TokenStream2> {
     };
 
     let builder_shortcuts = builder_shortcuts(&name);
-    let values_struct = animator_values(&name, &vis, &anim_fields)?;
     let timeline_struct = timeline_struct(&name, &vis, &anim_fields)?;
     let timeline_builder_impl = timeline_builder_impl(&name, &anim_fields);
     let keyframe_struct = keyframe_struct(&name, &vis, &anim_fields);
     let keyframe_builder = keyframe_builder(&name, &vis, &anim_fields);
     let animate = quote! {
         #builder_shortcuts
-        #values_struct
         #timeline_struct
         #timeline_builder_impl
         #keyframe_struct
@@ -57,52 +55,6 @@ fn expand_animate(input: DeriveInput) -> Result<TokenStream2> {
     };
 
     Ok(animate)
-}
-
-fn animator_values(
-    target_name: &Ident,
-    target_visibility: &Visibility,
-    target_fields: &[&Field],
-) -> Result<TokenStream2> {
-    let name = format_ident!("{target_name}AnimatorValues");
-    // Recreate the fields to strip all attributes.
-    let fields = target_fields.iter().map(|f| {
-        let Field {
-            ident: field_name,
-            ty,
-            ..
-        } = f;
-        quote! { #field_name: #ty }
-    });
-    let getters = target_fields
-        .iter()
-        .map(|f| field_getter(f, parse_quote! { pub }));
-    let setters = target_fields
-        .iter()
-        .map(|f| field_setter(f, Visibility::Inherited));
-    let mutators = target_fields.iter().map(|f| {
-        let field_name = f.ident.as_ref().unwrap();
-        quote! {
-            dest.#field_name = self.#field_name;
-        }
-    });
-    let values_struct = quote! {
-        #[derive(std::fmt::Debug, std::default::Default)]
-        #target_visibility struct #name {
-            #(#fields),*
-        }
-
-        impl #name {
-            #(#getters)*
-
-            #(#setters)*
-
-            pub fn update(&self, dest: &mut #target_name) {
-                #(#mutators);*
-            }
-        }
-    };
-    Ok(values_struct)
 }
 
 fn builder_shortcuts(target_name: &Ident) -> TokenStream2 {
@@ -118,28 +70,6 @@ fn builder_shortcuts(target_name: &Ident) -> TokenStream2 {
                 ::mina::TimelineConfiguration::default()
             }
         }
-    }
-}
-
-fn field_getter(field: &Field, visibility: Visibility) -> TokenStream2 {
-    let Field {
-        ref ident, ref ty, ..
-    } = field;
-    quote! {
-        #visibility fn #ident(&self) -> #ty { self.#ident }
-    }
-}
-
-fn field_setter(field: &Field, visibility: Visibility) -> TokenStream2 {
-    let Field {
-        ref ident, ref ty, ..
-    } = field;
-    let setter_name = Ident::new(
-        &format!("set_{}", ident.as_ref().unwrap()),
-        Span::call_site(),
-    );
-    quote! {
-        #visibility fn #setter_name(&mut self, #ident: #ty) { self.#ident = #ident; }
     }
 }
 
@@ -232,7 +162,6 @@ fn keyframe_struct(
 
 fn timeline_builder_impl(target_name: &Ident, target_fields: &[&Field]) -> TokenStream2 {
     let timeline_name = format_ident!("{target_name}Timeline");
-    let values_name = format_ident!("{target_name}AnimatorValues");
     let keyframe_data_name = format_ident!("{target_name}KeyframeData");
     let sub_timeline_initializers = target_fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
@@ -240,7 +169,7 @@ fn timeline_builder_impl(target_name: &Ident, target_fields: &[&Field]) -> Token
         quote! {
             #sub_name: ::mina_core::timeline_helpers::SubTimeline::from_keyframes(
                 &args.keyframes,
-                defaults.#field_name,
+                std::default::Default::default(),
                 |keyframe| keyframe.#field_name,
                 args.default_easing.clone()
             )
@@ -252,7 +181,6 @@ fn timeline_builder_impl(target_name: &Ident, target_fields: &[&Field]) -> Token
         {
             fn build(self) -> #timeline_name {
                 let args = ::mina_core::timeline::TimelineBuilderArguments::from(self);
-                let defaults = #values_name::default();
                 #timeline_name {
                     timescale: args.timescale,
                     #(#sub_timeline_initializers),*,
@@ -269,7 +197,6 @@ fn timeline_struct(
     target_fields: &[&Field],
 ) -> Result<TokenStream2> {
     let name = format_ident!("{target_name}Timeline");
-    let values_name = format_ident!("{target_name}AnimatorValues");
     let fields = target_fields
         .iter()
         .map(|f| {
@@ -281,14 +208,14 @@ fn timeline_struct(
     let value_assignments = target_fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
         let sub_name = format_ident!("t_{field_name}");
-        let setter_name = format_ident!("set_{field_name}");
         quote! {
             if let Some(#field_name) = self.#sub_name.value_at(normalized_time, frame_index) {
-                values.#setter_name(#field_name);
+                target.#field_name = #field_name;
             }
         }
     });
     let timeline_struct = quote! {
+        #[derive(std::fmt::Debug)]
         #target_visibility struct #name {
             boundary_times: std::vec::Vec<f32>,
             timescale: ::mina_core::time_scale::TimeScale,
@@ -296,17 +223,15 @@ fn timeline_struct(
         }
 
         impl ::mina::Timeline for #name {
-            type Values = #values_name;
+            type Target = #target_name;
 
-            fn values_at(&self, time: f32) -> Self::Values {
-                let mut values = Self::Values::default();
+            fn update(&self, target: &mut Self::Target, time: f32) {
                 let Some((normalized_time, frame_index)) = ::mina_core::timeline::prepare_frame(
                     time, self.boundary_times.as_slice(), &self.timescale
                 ) else {
-                    return values;
+                    return;
                 };
                 #(#value_assignments)*
-                values
             }
         }
     };

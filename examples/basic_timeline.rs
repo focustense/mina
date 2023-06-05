@@ -42,8 +42,7 @@ fn model(app: &App) -> Model {
 
 fn update(_app: &App, model: &mut Model, update: Update) {
     let time = update.since_start.as_secs_f32();
-    let values = model.timeline.values_at(time);
-    values.update(&mut model.shape);
+    model.timeline.update(&mut model.shape, time);
 }
 
 fn view(app: &App, model: &Model, frame: Frame) {
