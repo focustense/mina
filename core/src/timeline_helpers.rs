@@ -33,8 +33,8 @@ use std::fmt::Debug;
 ///
 /// User code should normally not need to create or access a sub-timeline; it is an implementation
 /// detail of the [`Animate`](../../mina_macros/derive.Animate.html) macro output.
-#[derive(Debug)]
-pub struct SubTimeline<Value> {
+#[derive(Clone, Debug)]
+pub struct SubTimeline<Value: Clone> {
     frames: Vec<SplitKeyframe<Value>>,
     frame_index_map: Vec<usize>,
 }
@@ -111,6 +111,22 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
         }
     }
 
+    /// Changes this sub-timeline to start (at 0%, normalized time `0.0`) at a new value.
+    ///
+    /// This is typically used when blending animations; the newly-active timeline begins where the
+    /// previously-active timeline ended or was interrupted.
+    ///
+    /// If the sub-timeline is empty, i.e. not used, then this does nothing.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - New value to use for the 0% frame position.
+    pub fn set_start_value(&mut self, value: Value) {
+        if let Some(mut first) = self.frames.first_mut() {
+            first.value = value;
+        }
+    }
+
     /// Gets the value for this sub-timeline's property at a given position.
     ///
     /// Does not perform a full search of keyframes based on the time; instead this expects the
@@ -176,14 +192,14 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
 ///   number of keyframes may have the field populated. `SplitKeyframe` always specifies an easing
 ///   function, as determined by the aforementioned rules on `Keyframe`, so that the interpolation
 ///   for any given timeline position does not require additional searching.
-#[derive(Debug)]
-struct SplitKeyframe<Value> {
+#[derive(Clone, Debug)]
+struct SplitKeyframe<Value: Clone> {
     easing: Easing,
     normalized_time: f32,
     value: Value,
 }
 
-impl<Value> SplitKeyframe<Value> {
+impl<Value: Clone> SplitKeyframe<Value> {
     fn new(normalized_time: f32, value: Value, easing: Easing) -> Self {
         Self {
             normalized_time,
@@ -191,9 +207,7 @@ impl<Value> SplitKeyframe<Value> {
             easing,
         }
     }
-}
 
-impl<Value: Clone> SplitKeyframe<Value> {
     fn with_time(&self, normalized_time: f32) -> Self {
         SplitKeyframe::new(normalized_time, self.value.clone(), self.easing.clone())
     }
@@ -304,6 +318,11 @@ mod tests {
 
     impl Timeline for TestTimeline {
         type Target = TestValues;
+
+        fn start_with(&mut self, values: &Self::Target) {
+            self.foo.set_start_value(values.foo);
+            self.bar.set_start_value(values.bar);
+        }
 
         // A real timeline would have its own time scale with delay, duration, etc., which is
         // different from the normalized time scale of the `SubTimeline`. These differences aren't
@@ -496,5 +515,22 @@ mod tests {
             timeline.values_at(1.0).round(),
             TestValues::new(250, 10000.0)
         );
+    }
+
+    #[test]
+    fn when_start_value_changed_then_updates_if_non_empty() {
+        let keyframes = vec![
+            Keyframe::new(0.0, TestKeyframeData::new(Some(10), None), None),
+            Keyframe::new(0.5, TestKeyframeData::new(Some(15), None), None),
+            Keyframe::new(1.0, TestKeyframeData::new(Some(50), None), None),
+        ];
+        let mut timeline = TestTimeline::new(keyframes, Easing::default());
+
+        timeline.start_with(&TestValues::new(5, 8.5));
+
+        assert_eq!(timeline.values_at(0.0), TestValues::new(5, 0.0));
+        assert_eq!(timeline.values_at(0.25), TestValues::new(10, 0.0));
+        assert_eq!(timeline.values_at(0.5), TestValues::new(15, 0.0));
+        assert_eq!(timeline.values_at(1.0), TestValues::new(50, 0.0));
     }
 }

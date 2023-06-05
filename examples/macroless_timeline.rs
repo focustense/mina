@@ -23,6 +23,10 @@ pub struct Style {
 }
 
 impl Style {
+    pub fn new(x: u32, y: u32, scale: f32) -> Self {
+        Self { x, y, scale }
+    }
+
     pub fn keyframe(normalized_time: f32) -> StyleKeyframeBuilder {
         StyleKeyframeBuilder::new(normalized_time)
     }
@@ -42,6 +46,12 @@ struct StyleTimeline {
 
 impl Timeline for StyleTimeline {
     type Target = Style;
+
+    fn start_with(&mut self, values: &Self::Target) {
+        self.t_x.set_start_value(values.x);
+        self.t_y.set_start_value(values.y);
+        self.t_scale.set_start_value(values.scale);
+    }
 
     fn update(&self, values: &mut Style, time: f32) {
         let Some((normalized_time, frame_index)) = prepare_frame(
@@ -141,18 +151,19 @@ impl KeyframeBuilder for StyleKeyframeBuilder {
 }
 
 fn main() {
-    let timeline: StyleTimeline = Style::timeline()
+    let mut timeline: StyleTimeline = Style::timeline()
         .duration_seconds(10.0)
         .delay_seconds(5.0)
         .default_easing(Easing::Ease)
         .repeat(Repeat::Times(2))
-        .keyframe(Style::keyframe(0.0).scale(1.0))
+        .keyframe(Style::keyframe(0.0).scale(0.0))
         .keyframe(Style::keyframe(0.25).x(200))
         .keyframe(Style::keyframe(0.5).x(200).y(50))
         .keyframe(Style::keyframe(0.75).x(0).y(50))
         .keyframe(Style::keyframe(1.0).y(0).scale(2.0))
         .build();
 
+    timeline.start_with(&Style::new(0, 0, 1.0));
     let mut values = Style::default();
     for i in 0..=100 {
         let time = i as f32 * 0.5;

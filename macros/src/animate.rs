@@ -214,8 +214,15 @@ fn timeline_struct(
             }
         }
     });
+    let start_value_assignments = target_fields.iter().map(|f| {
+        let field_name = f.ident.as_ref().unwrap();
+        let sub_name = format_ident!("t_{field_name}");
+        quote! {
+            self.#sub_name.set_start_value(values.#field_name);
+        }
+    });
     let timeline_struct = quote! {
-        #[derive(std::fmt::Debug)]
+        #[derive(std::clone::Clone, std::fmt::Debug)]
         #target_visibility struct #name {
             boundary_times: std::vec::Vec<f32>,
             timescale: ::mina_core::time_scale::TimeScale,
@@ -224,6 +231,10 @@ fn timeline_struct(
 
         impl ::mina::Timeline for #name {
             type Target = #target_name;
+
+            fn start_with(&mut self, values: &Self::Target) {
+                #(#start_value_assignments)*
+            }
 
             fn update(&self, target: &mut Self::Target, time: f32) {
                 let Some((normalized_time, frame_index)) = ::mina_core::timeline::prepare_frame(

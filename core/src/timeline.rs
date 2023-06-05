@@ -10,6 +10,20 @@ pub trait Timeline {
     /// which the timeline was derived, _not_ the generated `AnimatorValues` type.
     type Target;
 
+    /// Changes this timeline to start with a different set of values from the defaults that it was
+    /// originally configured with.
+    ///
+    /// Does not affect delay, repeat, or other timing properties; only the keyframes at the 0%
+    /// position are changed.
+    ///
+    /// This is typically used when blending animations; the newly-active timeline begins where the
+    /// previously-active timeline ended or was interrupted.
+    ///
+    /// # Arguments
+    ///
+    /// * `values` - New values where the timeline should start, replacing previous defaults.
+    fn start_with(&mut self, values: &Self::Target);
+
     /// Updates a set of animator values to represent the timeline at a given `time`.
     ///
     /// Properties that are not included in the timeline will not be updated.
@@ -262,8 +276,20 @@ impl<T: Timeline> MergedTimeline<T> {
     }
 }
 
+impl<T: Timeline + Clone> Clone for MergedTimeline<T> {
+    fn clone(&self) -> Self {
+        MergedTimeline::of(self.timelines.iter().cloned())
+    }
+}
+
 impl<T: Timeline> Timeline for MergedTimeline<T> {
     type Target = T::Target;
+
+    fn start_with(&mut self, values: &Self::Target) {
+        for timeline in self.timelines.iter_mut() {
+            timeline.start_with(values);
+        }
+    }
 
     fn update(&self, values: &mut Self::Target, time: f32) {
         for timeline in &self.timelines {
@@ -356,6 +382,14 @@ mod tests {
 
     impl Timeline for StubTimeline {
         type Target = TestValues;
+
+        fn start_with(&mut self, values: &Self::Target) {
+            if let Some(mut first_frame) = self.frames.get_mut(&OrderedFloat(0.0)) {
+                first_frame.foo = Some(values.foo);
+                first_frame.bar = Some(values.bar);
+                first_frame.baz = Some(values.baz);
+            }
+        }
 
         fn update(&self, values: &mut Self::Target, time: f32) {
             if let Some(frame) = self.frames.get(&OrderedFloat(time)) {
