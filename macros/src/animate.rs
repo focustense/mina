@@ -80,6 +80,12 @@ fn animator_values(
     let setters = target_fields
         .iter()
         .map(|f| field_setter(f, Visibility::Inherited));
+    let mutators = target_fields.iter().map(|f| {
+        let field_name = f.ident.as_ref().unwrap();
+        quote! {
+            dest.#field_name = self.#field_name;
+        }
+    });
     let values_struct = quote! {
         #[derive(std::fmt::Debug, std::default::Default)]
         #target_visibility struct #name {
@@ -90,6 +96,10 @@ fn animator_values(
             #(#getters)*
 
             #(#setters)*
+
+            pub fn update(&self, dest: &mut #target_name) {
+                #(#mutators);*
+            }
         }
     };
     Ok(values_struct)
