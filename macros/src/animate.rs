@@ -62,9 +62,18 @@ fn expand_animate(input: DeriveInput) -> Result<TokenStream2> {
 fn animator_values(
     target_name: &Ident,
     target_visibility: &Visibility,
-    target_fields: &Vec<&Field>,
+    target_fields: &[&Field],
 ) -> Result<TokenStream2> {
     let name = format_ident!("{target_name}AnimatorValues");
+    // Recreate the fields to strip all attributes.
+    let fields = target_fields.iter().map(|f| {
+        let Field {
+            ident: field_name,
+            ty,
+            ..
+        } = f;
+        quote! { #field_name: #ty }
+    });
     let getters = target_fields
         .iter()
         .map(|f| field_getter(f, parse_quote! { pub }));
@@ -74,7 +83,7 @@ fn animator_values(
     let values_struct = quote! {
         #[derive(std::fmt::Debug, std::default::Default)]
         #target_visibility struct #name {
-            #(#target_fields),*
+            #(#fields),*
         }
 
         impl #name {
