@@ -2,6 +2,14 @@ use mina::prelude::*;
 use nannou::color::Lch;
 use nannou::prelude::*;
 
+/// Example of a [`MergedTimeline`]. Specifies separate timelines for horizontal motion and vertical
+/// motion that have different durations and easings; then, Because We Can, adds a third animation
+/// for color that doesn't reverse.
+///
+/// These timelines are all merged to create a single timeline to run the animation. Note how all
+/// the inner timelines operate on the same style struct (`[Slider]`), but for different properties,
+/// and do not interfere with each other.
+
 fn main() {
     nannou::app(model).update(update).run();
 }
