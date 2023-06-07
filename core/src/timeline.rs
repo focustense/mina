@@ -47,6 +47,33 @@ pub trait TimelineBuilder<T: Timeline> {
     fn build(self) -> T;
 }
 
+/// Common trait shared by both [`Timeline`] and [`TimelineBuilder`] types.
+///
+/// [`StateAnimatorBuilder`](crate::animator::StateAnimatorBuilder) uses this so that it can accept
+/// either type, building new timelines as necessary; this reduces the number of type annotations
+/// and chained calls necessary to complete the animator.
+pub trait TimelineOrBuilder<T: Timeline> {
+    /// Returns the built timeline as a [`MergedTimeline`].
+    ///
+    /// - If the underlying instance is already a [`MergedTimeline`], then this returns itself.
+    /// - If it is a regular non-merged [`Timeline`], returns a [`MergedTimeline`] with this
+    ///   [`Timeline`] as its only delegate.
+    /// - If it is a [`TimelineBuilder`], builds the timeline and returns a [`MergedTimeline`] with
+    ///   the built timeline as its only delegate.
+    ///
+    /// Note: [`MergedTimeline`] is used instead of `T` as the return type because every
+    /// [`Timeline`] can be implicitly converted into a [`MergedTimeline`], and doing so allows
+    /// a [`StateAnimatorBuilder`](crate::animator::StateAnimatorBuilder) to mix both simple and
+    /// merged timelines in a single chain.
+    fn build(self) -> MergedTimeline<T>;
+}
+
+impl<T: Timeline> TimelineOrBuilder<T> for MergedTimeline<T> {
+    fn build(self) -> MergedTimeline<T> {
+        self
+    }
+}
+
 /// Consolidated arguments for building a specific type of [`Timeline`], derived from the
 /// [`TimelineConfiguration`].
 ///
@@ -279,6 +306,12 @@ impl<T: Timeline> MergedTimeline<T> {
 impl<T: Timeline + Clone> Clone for MergedTimeline<T> {
     fn clone(&self) -> Self {
         MergedTimeline::of(self.timelines.iter().cloned())
+    }
+}
+
+impl<T: Timeline> From<T> for MergedTimeline<T> {
+    fn from(value: T) -> Self {
+        MergedTimeline::of([value])
     }
 }
 

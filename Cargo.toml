@@ -12,4 +12,5 @@ mina_core = { path = "core" }
 mina_macros = { path = "macros" }
 
 [dev-dependencies]
+enum-map = "2.5.0"
 nannou = "0.18.1"

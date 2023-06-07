@@ -1,3 +1,4 @@
+pub mod animator;
 pub mod easing;
 pub mod interpolation;
 pub mod time_scale;

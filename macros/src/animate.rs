@@ -125,11 +125,11 @@ fn keyframe_builder(
             #(#setters)*
         }
 
-        impl ::mina_core::timeline::KeyframeBuilder for #builder_name {
+        impl ::mina::KeyframeBuilder for #builder_name {
             type Data = #data_name;
 
-            fn build(&self) -> ::mina_core::timeline::Keyframe<#data_name> {
-                ::mina_core::timeline::Keyframe::new(
+            fn build(&self) -> ::mina::Keyframe<#data_name> {
+                ::mina::Keyframe::new(
                     self.normalized_time, self.data.clone(), self.easing.clone())
             }
 
@@ -167,7 +167,7 @@ fn timeline_builder_impl(target_name: &Ident, target_fields: &[&Field]) -> Token
         let field_name = f.ident.as_ref().unwrap();
         let sub_name = format_ident!("t_{field_name}");
         quote! {
-            #sub_name: ::mina_core::timeline_helpers::SubTimeline::from_keyframes(
+            #sub_name: ::mina::SubTimeline::from_keyframes(
                 &args.keyframes,
                 std::default::Default::default(),
                 |keyframe| keyframe.#field_name,
@@ -180,12 +180,20 @@ fn timeline_builder_impl(target_name: &Ident, target_fields: &[&Field]) -> Token
         for ::mina::TimelineConfiguration<#keyframe_data_name>
         {
             fn build(self) -> #timeline_name {
-                let args = ::mina_core::timeline::TimelineBuilderArguments::from(self);
+                let args = ::mina::TimelineBuilderArguments::from(self);
                 #timeline_name {
                     timescale: args.timescale,
                     #(#sub_timeline_initializers),*,
                     boundary_times: args.boundary_times,
                 }
+            }
+        }
+
+        impl ::mina::TimelineOrBuilder<#timeline_name>
+        for ::mina::TimelineConfiguration<#keyframe_data_name>
+        {
+            fn build(self) -> ::mina::MergedTimeline<#timeline_name> {
+                ::mina::MergedTimeline::of([::mina::TimelineBuilder::build(self)])
             }
         }
     }
@@ -202,7 +210,7 @@ fn timeline_struct(
         .map(|f| {
             let Field { ident, ty, .. } = f;
             let name = format_ident!("t_{}", ident.as_ref().unwrap());
-            Ok(quote! { #name: ::mina_core::timeline_helpers::SubTimeline<#ty> })
+            Ok(quote! { #name: ::mina::SubTimeline<#ty> })
         })
         .collect::<Result<Vec<_>>>()?;
     let value_assignments = target_fields.iter().map(|f| {
@@ -225,7 +233,7 @@ fn timeline_struct(
         #[derive(std::clone::Clone, std::fmt::Debug)]
         #target_visibility struct #name {
             boundary_times: std::vec::Vec<f32>,
-            timescale: ::mina_core::time_scale::TimeScale,
+            timescale: ::mina::TimeScale,
             #(#fields),*
         }
 
@@ -237,12 +245,18 @@ fn timeline_struct(
             }
 
             fn update(&self, target: &mut Self::Target, time: f32) {
-                let Some((normalized_time, frame_index)) = ::mina_core::timeline::prepare_frame(
+                let Some((normalized_time, frame_index)) = ::mina::prepare_frame(
                     time, self.boundary_times.as_slice(), &self.timescale
                 ) else {
                     return;
                 };
                 #(#value_assignments)*
+            }
+        }
+
+        impl ::mina::TimelineOrBuilder<#name> for #name {
+            fn build(self) -> ::mina::MergedTimeline<#name> {
+                ::mina::MergedTimeline::of([self])
             }
         }
     };
