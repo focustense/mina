@@ -106,6 +106,10 @@ fn keyframe_builder(
             }
         }
     });
+    let from_data_assignments = target_fields.iter().map(|f| {
+        let Field { ident: field_name, .. } = f;
+        quote! { self.data.#field_name = std::option::Option::Some(values.#field_name) }
+    });
     quote! {
         #target_visibility struct #builder_name {
             data: #data_name,
@@ -120,6 +124,11 @@ fn keyframe_builder(
                     data: std::default::Default::default(),
                     easing: None,
                 }
+            }
+
+            fn values_from(mut self, normalized_time: f32, values: &#target_name) -> Self {
+                #(#from_data_assignments);*;
+                self
             }
 
             #(#setters)*

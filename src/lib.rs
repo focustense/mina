@@ -11,4 +11,4 @@ pub use mina_core::{
     },
     timeline_helpers::SubTimeline,
 };
-pub use mina_macros::Animate;
+pub use mina_macros::{animator, Animate};

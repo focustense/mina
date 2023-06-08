@@ -100,12 +100,14 @@ pub struct TimelineBuilderArguments<Data: Clone + Debug> {
 
 impl<Data: Clone + Debug> From<TimelineConfiguration<Data>> for TimelineBuilderArguments<Data> {
     fn from(value: TimelineConfiguration<Data>) -> Self {
-        Self {
+        let mut args = Self {
             timescale: value.create_timescale(),
             boundary_times: value.get_boundary_times(),
             default_easing: value.default_easing,
             keyframes: value.keyframes,
-        }
+        };
+        args.keyframes.sort_by(|a, b| a.normalized_time.total_cmp(&b.normalized_time));
+        args
     }
 }
 
@@ -417,7 +419,7 @@ mod tests {
         type Target = TestValues;
 
         fn start_with(&mut self, values: &Self::Target) {
-            if let Some(mut first_frame) = self.frames.get_mut(&OrderedFloat(0.0)) {
+            if let Some(first_frame) = self.frames.get_mut(&OrderedFloat(0.0)) {
                 first_frame.foo = Some(values.foo);
                 first_frame.bar = Some(values.bar);
                 first_frame.baz = Some(values.baz);

@@ -122,7 +122,7 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
     ///
     /// * `value` - New value to use for the 0% frame position.
     pub fn set_start_value(&mut self, value: Value) {
-        if let Some(mut first) = self.frames.first_mut() {
+        if let Some(first) = self.frames.first_mut() {
             first.value = value;
         }
     }

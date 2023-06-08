@@ -8,6 +8,9 @@ proc-macro = true
 name = "mina_macros"
 path = "src/lib.rs"
 
+[features]
+parse-debug = ["syn/extra-traits"]
+
 [dependencies]
 mina_core = { path = "../core" }
 proc-macro2 = "1.0.59"
