@@ -1,0 +1,12 @@
+[package]
+name = "example_iced_stopwatch"
+version = "0.1.0"
+edition = "2021"
+
+# https://github.com/rust-lang/cargo/issues/7880
+[workspace]
+
+[dependencies]
+enum-map = "2.5.0"
+iced = "0.9.0"
+mina = { path = "../.." }
