@@ -2,5 +2,5 @@
 
 pub use crate::{
     animator, Animate, Easing, EnumStateAnimator, KeyframeBuilder, MergedTimeline, Repeat, State,
-    StateAnimatorBuilder, Timeline, TimelineBuilder, TimelineConfiguration,
+    StateAnimator, StateAnimatorBuilder, Timeline, TimelineBuilder, TimelineConfiguration,
 };

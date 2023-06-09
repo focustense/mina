@@ -5,7 +5,6 @@ use iced::{
     Renderer, Settings, Subscription, Theme,
 };
 use mina::prelude::*;
-use mina::StateAnimator;
 use std::time::Instant;
 
 /// Example combining the [`Animate`](mina::Animate) and [`animator`](mina::animator) macros to

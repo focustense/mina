@@ -179,7 +179,7 @@ fn inline_defaults(
 fn seconds_multiplier(num_lit: &NumericLit) -> Result<f32> {
     match num_lit.suffix() {
         "s" => Ok(1.0),
-        "ms" => Ok(1000.0),
+        "ms" => Ok(0.001),
         _ => Err(Error::new(num_lit.span(), "blah")),
     }
 }
@@ -263,7 +263,7 @@ impl Parse for AnimatorDefaultValues {
         } else if input.peek(token::Brace) {
             let content;
             let brace_token = braced!(content in input);
-            let values = Punctuated::parse_separated_nonempty(&content)?;
+            let values = Punctuated::parse_terminated(&content)?;
             Ok(Self::Inline(values, brace_token))
         } else {
             Ok(Self::Expr(input.parse()?))
@@ -552,7 +552,7 @@ impl Parse for KeyframeValues {
         } else {
             let content;
             let brace_token = braced!(content in input);
-            let values = Punctuated::parse_separated_nonempty(&content)?;
+            let values = Punctuated::parse_terminated(&content)?;
             Ok(KeyframeValues::Explicit(values, brace_token))
         }
     }
