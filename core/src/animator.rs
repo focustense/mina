@@ -66,6 +66,9 @@ pub trait StateAnimator {
     /// If the current animation has ended and does not repeat, this has no effect.
     fn advance(&mut self, elapsed_seconds: f32);
 
+    /// Gets the current state of the animator.
+    fn current_state(&self) -> &Self::State;
+
     /// Gets a reference to the current values, corresponding to the current `State` and current
     /// position on the timeline for that state.
     fn current_values(&self) -> &Self::Values;
@@ -83,6 +86,14 @@ pub trait StateAnimator {
     /// be stopped but the values will not be changed.
     fn set_state(&mut self, state: &Self::State);
 }
+
+/// Alias for a [`MappedTimelineAnimator`] whose map type is an [`EnumMap`].
+///
+/// Callers shouldn't use this type directly unless they need to store the instance in a struct or
+/// tuple and can't use the boxed [`StateAnimator`] trait object. For creation of animators, use the
+/// [`StateAnimatorBuilder`] instead.
+pub type EnumStateAnimator<State, Timeline> =
+    MappedTimelineAnimator<State, Timeline, EnumMap<State, Option<MergedTimeline<Timeline>>>>;
 
 /// Default implementation of a [`StateAnimator`] using an [`EnumMap`].
 ///
@@ -147,6 +158,10 @@ where
     fn advance(&mut self, elapsed_seconds: f32) {
         self.state_duration += Duration::from_secs_f32(elapsed_seconds);
         self.update_current_values();
+    }
+
+    fn current_state(&self) -> &Self::State {
+        &self.current_state
     }
 
     fn current_values(&self) -> &Self::Values {

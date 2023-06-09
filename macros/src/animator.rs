@@ -7,8 +7,8 @@ use syn::{
     parse_macro_input,
     punctuated::Punctuated,
     spanned::Spanned,
-    token, Error, Expr, FieldValue, Ident, Lit, LitByte, LitFloat, LitInt, Member, Path, Result,
-    Token, Type,
+    token, Error, Expr, FieldValue, Lit, LitByte, LitFloat, LitInt, Member, Path, Result, Token,
+    Type,
 };
 
 pub fn animator_impl(input: TokenStream) -> TokenStream {
@@ -36,13 +36,13 @@ fn expand_animator(input: AnimatorInput) -> Result<TokenStream2> {
     let default_values_assignment = match defaults.as_ref().map(|def| &def.values) {
         Some(AnimatorDefaultValues::Expr(expr)) => quote! { #expr },
         Some(AnimatorDefaultValues::Inline(field_values, _)) => {
-            inline_defaults(&name, &field_values)?
+            inline_defaults(name, field_values)?
         }
         _ => quote! { #target_type::default() },
     };
     let mut state_assignments = Vec::new();
     for state_mapping in &states {
-        let timeline = builder_create_timeline_or_merge(&name, &state_mapping.behavior)?;
+        let timeline = builder_create_timeline_or_merge(name, &state_mapping.behavior)?;
         for state in &state_mapping.states {
             state_assignments.push(quote! { .on(#state, #timeline) })
         }
@@ -57,7 +57,7 @@ fn expand_animator(input: AnimatorInput) -> Result<TokenStream2> {
                 .build()
         }
     };
-    Ok(anim.into())
+    Ok(anim)
 }
 
 fn builder_append_keyframe(name: &Path, config: &KeyframeConfig) -> Result<TokenStream2> {
@@ -104,6 +104,9 @@ fn builder_create_timeline(name: &Path, config: &TimelineConfig) -> Result<Token
     let delay_setter = delay.map(|delay_seconds| {
         quote! { .delay_seconds(#delay_seconds) }
     });
+    let easing_setter = config.easing.as_ref().map(|easing| {
+        quote! { .default_easing(#easing) }
+    });
     let repeat_setter = match &config.repeat {
         Some(KeyframeRepeatArgument::Fixed(lit_int)) => {
             let times: u32 = lit_int.base10_parse()?;
@@ -124,9 +127,11 @@ fn builder_create_timeline(name: &Path, config: &TimelineConfig) -> Result<Token
         #name::timeline()
             #duration_setter
             #delay_setter
+            #easing_setter
             #repeat_setter
             #reverse_setter
             #(#keyframe_appenders)*
+            .build()
     })
 }
 
@@ -311,7 +316,7 @@ struct TimelineConfig {
     _span: Span,
     duration: Option<TimelineDurationArgument>,
     delay: Option<TimelineDelayArgument>,
-    easing: Option<Ident>,
+    easing: Option<Path>,
     repeat: Option<KeyframeRepeatArgument>,
     reverse: Option<kw::reverse>,
     keyframes: Vec<KeyframeConfig>,
@@ -347,8 +352,6 @@ impl Parse for TimelineConfig {
                 config.repeat = Some(input.parse()?);
             } else if input.peek(kw::from) || input.peek(kw::to) {
                 config.keyframes.push(input.parse()?);
-            } else if input.peek(Ident) {
-                config.easing = Some(input.parse()?);
             } else if input.peek(Lit) {
                 let lookahead_input = input.fork();
                 let lit = lookahead_input.parse::<Lit>()?;
@@ -367,6 +370,12 @@ impl Parse for TimelineConfig {
                         ))
                     }
                 }
+            }
+            else if input.fork().parse::<Path>().is_ok() {
+                // Can't peek on a Path (probably too complex/expensive?), so we have to attempt an
+                // actual parse and fail gracefully if it's not a path. This branch goes last, i.e.
+                // only runs if nothing else can match and we're about to fail anyway.
+                config.easing = Some(input.parse::<Path>()?);
             } else {
                 return Err(Error::new(
                     input.span(),

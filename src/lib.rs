@@ -1,7 +1,7 @@
 pub mod prelude;
 
 pub use mina_core::{
-    animator::{State, StateAnimator, StateAnimatorBuilder},
+    animator::{EnumStateAnimator, State, StateAnimator, StateAnimatorBuilder},
     easing::{Easing, EasingFunction},
     interpolation::Lerp,
     time_scale::TimeScale,
