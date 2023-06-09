@@ -87,6 +87,41 @@ mod using_builder {
             Style { x: 20, y: 80 }, // 9s
         ]);
     }
+
+    #[test]
+    fn when_state_is_not_animated_pauses_previous_animation() {
+        let mut animator = StateAnimatorBuilder::new()
+            .from_state(Interaction::A)
+            .on(Interaction::A, Style::timeline()
+                .duration_seconds(5.0)
+                .keyframe(Style::keyframe(1.0).x(80).y(20)))
+            .build();
+
+        let frame_values_a1 = run_animator(&mut animator, 1.0, 3.0);
+        animator.set_state(&Interaction::B);
+        let frame_values_b = run_animator(&mut animator, 1.0, 3.0);
+        animator.set_state(&Interaction::A);
+        let frame_values_a2 = run_animator(&mut animator, 1.0, 3.0);
+
+        assert_eq!(frame_values_a1, &[
+            Style { x: 0, y: 0 },
+            Style { x: 16, y: 4 },
+            Style { x: 32, y: 8 },
+            Style { x: 48, y: 12 },
+        ]);
+        assert_eq!(frame_values_b, &[
+            Style { x: 48, y: 12 },
+            Style { x: 48, y: 12 },
+            Style { x: 48, y: 12 },
+            Style { x: 48, y: 12 },
+        ]);
+        assert_eq!(frame_values_a2, &[
+            Style { x: 48, y: 12 },
+            Style { x: 64, y: 16 },
+            Style { x: 80, y: 20 },
+            Style { x: 80, y: 20 },
+        ]);
+    }
 }
 
 mod using_macro {

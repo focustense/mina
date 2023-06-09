@@ -108,6 +108,7 @@ where
     timelines: TimelineMap,
     current_state: State,
     current_values: Timeline::Target,
+    paused_animation: Option<(State, Duration)>,
     state_duration: Duration,
     _timeline_phantom: PhantomData<Timeline>,
 }
@@ -124,6 +125,7 @@ where
             timelines,
             current_state: initial_state.clone(),
             current_values: initial_values,
+            paused_animation: None,
             state_duration: Duration::ZERO,
             _timeline_phantom: PhantomData,
         };
@@ -172,9 +174,21 @@ where
         if state == &self.current_state {
             return;
         }
-        self.blend_next_timeline(state);
+        match self.paused_animation.as_ref() {
+            Some((paused_state, paused_position)) if state == paused_state => {
+                self.state_duration = *paused_position;
+            }
+            _ => {
+                let was_animating = self.timelines.get(&self.current_state).is_some();
+                let will_animate = self.timelines.get(state).is_some();
+                if was_animating && !will_animate {
+                    self.paused_animation = Some((self.current_state.clone(), self.state_duration));
+                }
+                self.blend_next_timeline(state);
+                self.state_duration = Duration::ZERO;
+            }
+        }
         self.current_state = state.clone();
-        self.state_duration = Duration::ZERO;
         self.update_current_values();
     }
 }
