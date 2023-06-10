@@ -37,6 +37,7 @@ use std::fmt::Debug;
 pub struct SubTimeline<Value: Clone> {
     frames: Vec<SplitKeyframe<Value>>,
     frame_index_map: Vec<usize>,
+    start_frame_override: Option<SplitKeyframe<Value>>,
 }
 
 impl<Value: Clone + Lerp> SubTimeline<Value> {
@@ -108,10 +109,13 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
         Self {
             frames: converted_frames,
             frame_index_map,
+            start_frame_override: None,
         }
     }
 
-    /// Changes this sub-timeline to start (at 0%, normalized time `0.0`) at a new value.
+    /// Temporarily changes this sub-timeline to start (at 0%, normalized time `0.0`) at a new
+    /// value. The original behavior can be restored with a call to
+    /// [`restore_start_value`](Self::restore_start_value).
     ///
     /// This is typically used when blending animations; the newly-active timeline begins where the
     /// previously-active timeline ended or was interrupted.
@@ -121,9 +125,9 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
     /// # Arguments
     ///
     /// * `value` - New value to use for the 0% frame position.
-    pub fn set_start_value(&mut self, value: Value) {
-        if let Some(first) = self.frames.first_mut() {
-            first.value = value;
+    pub fn override_start_value(&mut self, value: Value) {
+        if let Some(first_frame) = self.frames.first() {
+            self.start_frame_override = Some(first_frame.with_value(value));
         }
     }
 
@@ -138,13 +142,22 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
     /// * `normalized_time` - Timeline position from 0% (`0.0`) to 100% (`1.0`). Values outside this
     ///   range are clamped to the range.
     /// * `index_hint` - Index of the keyframe containing the `normalized_time` in the original
-    ///   timeline that was provided to [`from_keyframes`](SubTimeline::from_keyframes) on creation.
-    pub fn value_at(&self, normalized_time: f32, index_hint: usize) -> Option<Value> {
+    ///   timeline that was provided to [`from_keyframes`](Self::from_keyframes) on creation.
+    /// * `enable_start_override` - Whether to use the overridden value from a previous
+    ///   [`override_start_value`](Self::override_start_value) if the time is near the first frame.
+    ///   If this is `false`, the original value will be used irrespective of overrides.
+    pub fn value_at(
+        &self,
+        normalized_time: f32,
+        index_hint: usize,
+        enable_start_override: bool,
+    ) -> Option<Value> {
         if self.frame_index_map.is_empty() {
             return None;
         }
         let normalized_time = normalized_time.clamp(0.0, 1.0);
-        let bounding_frames = self.get_bounding_frames(normalized_time, index_hint)?;
+        let bounding_frames =
+            self.get_bounding_frames(normalized_time, index_hint, enable_start_override)?;
         Some(interpolate_value(&bounding_frames, normalized_time))
     }
 
@@ -152,6 +165,7 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
         Self {
             frame_index_map: vec![],
             frames: vec![],
+            start_frame_override: None,
         }
     }
 
@@ -159,21 +173,41 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
         &self,
         normalized_time: f32,
         index_hint: usize,
+        enable_start_override: bool,
     ) -> Option<[&SplitKeyframe<Value>; 2]> {
         let index_at = *self.frame_index_map.get(index_hint)?;
-        let frame_at = self.frames.get(index_at)?;
+        let frame_at = self.get_frame(index_at, enable_start_override)?;
         if normalized_time < frame_at.normalized_time {
             if index_at > 0 {
-                Some([&self.frames[index_at - 1], frame_at])
+                Some([
+                    self.get_frame(index_at - 1, enable_start_override)?,
+                    frame_at,
+                ])
             } else {
                 None
             }
         } else if index_at == self.frames.len() - 1 {
-            Some([&self.frames[index_at], &self.frames[index_at]])
+            Some([frame_at, frame_at])
         } else {
             self.frames
                 .get(index_at + 1)
                 .map(|next_frame| [frame_at, next_frame])
+        }
+    }
+
+    fn get_frame(
+        &self,
+        index: usize,
+        enable_start_override: bool,
+    ) -> Option<&SplitKeyframe<Value>> {
+        if enable_start_override && index == 0 {
+            if let Some(ref override_frame) = self.start_frame_override {
+                Some(override_frame)
+            } else {
+                self.frames.get(0)
+            }
+        } else {
+            self.frames.get(index)
         }
     }
 }
@@ -210,6 +244,10 @@ impl<Value: Clone> SplitKeyframe<Value> {
 
     fn with_time(&self, normalized_time: f32) -> Self {
         SplitKeyframe::new(normalized_time, self.value.clone(), self.easing.clone())
+    }
+
+    fn with_value(&self, value: Value) -> Self {
+        SplitKeyframe::new(self.normalized_time, value, self.easing.clone())
     }
 }
 
@@ -303,9 +341,42 @@ mod tests {
             }
         }
 
+        // A real timeline would have its own time scale with delay, duration, etc., which is
+        // different from the normalized time scale of the `SubTimeline`. This method would also
+        // handle the logic to distinguish repeating and reversing, which should never override
+        // start values, from the first forward cycle, which should. These differences aren't
+        // important for the purpose of unit-testing the sub; we'll just work in the normalized time
+        // ranges and provide an explicit way to choose override or non-override.
+        fn update_with_override(
+            &self,
+            target: &mut TestValues,
+            time: f32,
+            enable_start_override: bool,
+        ) {
+            if self.boundary_times.is_empty() {
+                return;
+            }
+            let frame_index = match self.boundary_times.binary_search_by(|t| t.total_cmp(&time)) {
+                Ok(index) => index,
+                Err(next_index) => next_index.max(1) - 1,
+            };
+            if let Some(foo) = self.foo.value_at(time, frame_index, enable_start_override) {
+                target.foo = foo;
+            }
+            if let Some(bar) = self.bar.value_at(time, frame_index, enable_start_override) {
+                target.bar = bar;
+            }
+        }
+
         fn values_at(&self, time: f32) -> TestValues {
             let mut target = TestValues::default();
             self.update(&mut target, time);
+            target
+        }
+
+        fn non_overridden_values_at(&self, time: f32) -> TestValues {
+            let mut target = TestValues::default();
+            self.update_with_override(&mut target, time, false);
             target
         }
 
@@ -320,27 +391,12 @@ mod tests {
         type Target = TestValues;
 
         fn start_with(&mut self, values: &Self::Target) {
-            self.foo.set_start_value(values.foo);
-            self.bar.set_start_value(values.bar);
+            self.foo.override_start_value(values.foo);
+            self.bar.override_start_value(values.bar);
         }
 
-        // A real timeline would have its own time scale with delay, duration, etc., which is
-        // different from the normalized time scale of the `SubTimeline`. These differences aren't
-        // important for the purpose of unit-testing the sub.
         fn update(&self, target: &mut Self::Target, time: f32) {
-            if self.boundary_times.is_empty() {
-                return;
-            }
-            let frame_index = match self.boundary_times.binary_search_by(|t| t.total_cmp(&time)) {
-                Ok(index) => index,
-                Err(next_index) => next_index.max(1) - 1,
-            };
-            if let Some(foo) = self.foo.value_at(time, frame_index) {
-                target.foo = foo;
-            }
-            if let Some(bar) = self.bar.value_at(time, frame_index) {
-                target.bar = bar;
-            }
+            self.update_with_override(target, time, true);
         }
     }
 
@@ -518,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn when_start_value_changed_then_updates_if_non_empty() {
+    fn when_start_value_overridden_then_updates_if_non_empty() {
         let keyframes = vec![
             Keyframe::new(0.0, TestKeyframeData::new(Some(10), None), None),
             Keyframe::new(0.5, TestKeyframeData::new(Some(15), None), None),
@@ -532,5 +588,34 @@ mod tests {
         assert_eq!(timeline.values_at(0.25), TestValues::new(10, 0.0));
         assert_eq!(timeline.values_at(0.5), TestValues::new(15, 0.0));
         assert_eq!(timeline.values_at(1.0), TestValues::new(50, 0.0));
+    }
+
+    #[test]
+    fn when_start_override_disabled_then_interpolates_with_original_keyframe() {
+        let keyframes = vec![
+            Keyframe::new(0.0, TestKeyframeData::new(Some(10), None), None),
+            Keyframe::new(0.5, TestKeyframeData::new(Some(15), None), None),
+            Keyframe::new(1.0, TestKeyframeData::new(Some(50), None), None),
+        ];
+        let mut timeline = TestTimeline::new(keyframes, Easing::default());
+
+        timeline.start_with(&TestValues::new(5, 8.5));
+
+        assert_eq!(
+            timeline.non_overridden_values_at(0.0),
+            TestValues::new(10, 0.0)
+        );
+        assert_eq!(
+            timeline.non_overridden_values_at(0.25),
+            TestValues::new(12, 0.0)
+        );
+        assert_eq!(
+            timeline.non_overridden_values_at(0.5),
+            TestValues::new(15, 0.0)
+        );
+        assert_eq!(
+            timeline.non_overridden_values_at(1.0),
+            TestValues::new(50, 0.0)
+        );
     }
 }

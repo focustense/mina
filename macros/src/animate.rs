@@ -226,7 +226,10 @@ fn timeline_struct(
         let field_name = f.ident.as_ref().unwrap();
         let sub_name = format_ident!("t_{field_name}");
         quote! {
-            if let Some(#field_name) = self.#sub_name.value_at(normalized_time, frame_index) {
+            if let Some(#field_name) = self
+                .#sub_name
+                .value_at(normalized_time, frame_index, enable_start_override)
+            {
                 target.#field_name = #field_name;
             }
         }
@@ -235,7 +238,7 @@ fn timeline_struct(
         let field_name = f.ident.as_ref().unwrap();
         let sub_name = format_ident!("t_{field_name}");
         quote! {
-            self.#sub_name.set_start_value(values.#field_name);
+            self.#sub_name.override_start_value(values.#field_name);
         }
     });
     let timeline_struct = quote! {
@@ -254,9 +257,9 @@ fn timeline_struct(
             }
 
             fn update(&self, target: &mut Self::Target, time: f32) {
-                let Some((normalized_time, frame_index)) = ::mina::prepare_frame(
-                    time, self.boundary_times.as_slice(), &self.timescale
-                ) else {
+                let Some((normalized_time, frame_index, enable_start_override)) =
+                    ::mina::prepare_frame(time, self.boundary_times.as_slice(), &self.timescale)
+                else {
                     return;
                 };
                 #(#value_assignments)*

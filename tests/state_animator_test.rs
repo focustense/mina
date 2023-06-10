@@ -89,6 +89,88 @@ mod using_builder {
     }
 
     #[test]
+    fn when_state_changed_and_repeating_then_loops_from_non_blended_values() {
+        let mut animator = StateAnimatorBuilder::new()
+            .from_state(Interaction::A)
+            .on(Interaction::A, Style::timeline()
+                .duration_seconds(5.0)
+                .keyframe(Style::keyframe(0.0).x(0))
+                .keyframe(Style::keyframe(1.0).x(100)))
+            .on(Interaction::B, Style::timeline()
+                .duration_seconds(5.0)
+                .repeat(Repeat::Infinite)
+                .keyframe(Style::keyframe(0.0).x(120).y(50))
+                .keyframe(Style::keyframe(1.0).x(20).y(80)))
+            .build();
+
+        let frame_values_a = run_animator(&mut animator, 1.0, 3.0);
+        animator.set_state(&Interaction::B);
+        let frame_values_b = run_animator(&mut animator, 1.0, 11.0);
+
+        assert_eq!(frame_values_a, &[
+            Style { x: 0, y: 0 },  // 0s
+            Style { x: 20, y: 0 }, // 1s
+            Style { x: 40, y: 0 }, // 2s
+            Style { x: 60, y: 0 }, // 3s
+        ]);
+        assert_eq!(frame_values_b, &[
+            Style { x: 60, y: 0 },  // 3s (repeated)
+            Style { x: 52, y: 16 }, // 4s
+            Style { x: 44, y: 32 }, // 5s
+            Style { x: 36, y: 48 }, // 6s
+            Style { x: 28, y: 64 }, // 7s
+            Style { x: 20, y: 80 }, // 8s
+            Style { x: 100, y: 56 }, // 9s
+            Style { x: 80, y: 62 }, // 10s
+            Style { x: 60, y: 68 }, // 11s
+            Style { x: 40, y: 74 }, // 12s
+            Style { x: 20, y: 80 }, // 13s
+            Style { x: 100, y: 56 }, // 14s
+        ]);
+    }
+
+    #[test]
+    fn when_state_changed_and_reversing_then_returns_to_non_blended_values() {
+        let mut animator = StateAnimatorBuilder::new()
+            .from_state(Interaction::A)
+            .on(Interaction::A, Style::timeline()
+                .duration_seconds(5.0)
+                .keyframe(Style::keyframe(0.0).x(0))
+                .keyframe(Style::keyframe(1.0).x(100)))
+            .on(Interaction::B, Style::timeline()
+                .duration_seconds(10.0)
+                .reverse(true)
+                .keyframe(Style::keyframe(0.0).x(120).y(50))
+                .keyframe(Style::keyframe(1.0).x(20).y(80)))
+            .build();
+
+        let frame_values_a = run_animator(&mut animator, 1.0, 3.0);
+        animator.set_state(&Interaction::B);
+        let frame_values_b = run_animator(&mut animator, 1.0, 11.0);
+
+        assert_eq!(frame_values_a, &[
+            Style { x: 0, y: 0 },  // 0s
+            Style { x: 20, y: 0 }, // 1s
+            Style { x: 40, y: 0 }, // 2s
+            Style { x: 60, y: 0 }, // 3s
+        ]);
+        assert_eq!(frame_values_b, &[
+            Style { x: 60, y: 0 },  // 3s (repeated)
+            Style { x: 52, y: 16 }, // 4s
+            Style { x: 44, y: 32 }, // 5s
+            Style { x: 36, y: 48 }, // 6s
+            Style { x: 28, y: 64 }, // 7s
+            Style { x: 20, y: 80 }, // 8s
+            Style { x: 40, y: 74 }, // 9s
+            Style { x: 60, y: 68 }, // 10s
+            Style { x: 80, y: 62 }, // 11s
+            Style { x: 100, y: 56 }, // 12s
+            Style { x: 120, y: 50 }, // 13s (ended)
+            Style { x: 120, y: 50 }, // 14s
+        ]);
+    }
+
+    #[test]
     fn when_state_is_not_animated_pauses_previous_animation() {
         let mut animator = StateAnimatorBuilder::new()
             .from_state(Interaction::A)

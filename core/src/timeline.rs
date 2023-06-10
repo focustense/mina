@@ -14,7 +14,9 @@ pub trait Timeline {
     /// originally configured with.
     ///
     /// Does not affect delay, repeat, or other timing properties; only the keyframes at the 0%
-    /// position are changed.
+    /// position are changed. If the timeline repeats or reverses, the new start value will affect
+    /// only the forward direction of the first cycle, and the timeline will loop or reverse back to
+    /// the starting value with which it was originally configured.
     ///
     /// This is typically used when blending animations; the newly-active timeline begins where the
     /// previously-active timeline ended or was interrupted.
@@ -106,7 +108,8 @@ impl<Data: Clone + Debug> From<TimelineConfiguration<Data>> for TimelineBuilderA
             default_easing: value.default_easing,
             keyframes: value.keyframes,
         };
-        args.keyframes.sort_by(|a, b| a.normalized_time.total_cmp(&b.normalized_time));
+        args.keyframes
+            .sort_by(|a, b| a.normalized_time.total_cmp(&b.normalized_time));
         args
     }
 }
@@ -357,20 +360,22 @@ pub fn prepare_frame(
     time: f32,
     boundary_times: &[f32],
     timescale: &TimeScale,
-) -> Option<(f32, usize)> {
+) -> Option<(f32, usize, bool)> {
     if boundary_times.is_empty() {
         return None;
     }
-    let normalized_time = match timescale.get_position(time) {
-        TimeScalePosition::Active(t, _) => t,
-        TimeScalePosition::NotStarted => 0.0,
-        TimeScalePosition::Ended(t) => t,
+    let (normalized_time, enable_start_override) = match timescale.get_position(time) {
+        TimeScalePosition::Active(t, loop_state) => {
+            (t, !loop_state.is_repeating && !loop_state.is_reversing)
+        }
+        TimeScalePosition::NotStarted => (0.0, true),
+        TimeScalePosition::Ended(t) => (t, false),
     };
     let frame_index = match boundary_times.binary_search_by(|t| t.total_cmp(&normalized_time)) {
         Ok(index) => index,
         Err(next_index) => next_index.max(1) - 1,
     };
-    Some((normalized_time, frame_index))
+    Some((normalized_time, frame_index, enable_start_override))
 }
 
 #[cfg(test)]

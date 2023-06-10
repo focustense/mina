@@ -48,24 +48,33 @@ impl Timeline for StyleTimeline {
     type Target = Style;
 
     fn start_with(&mut self, values: &Self::Target) {
-        self.t_x.set_start_value(values.x);
-        self.t_y.set_start_value(values.y);
-        self.t_scale.set_start_value(values.scale);
+        self.t_x.override_start_value(values.x);
+        self.t_y.override_start_value(values.y);
+        self.t_scale.override_start_value(values.scale);
     }
 
     fn update(&self, values: &mut Style, time: f32) {
-        let Some((normalized_time, frame_index)) = prepare_frame(
+        let Some((normalized_time, frame_index, enable_start_override)) = prepare_frame(
             time, self.boundary_times.as_slice(), &self.timescale
         ) else {
             return;
         };
-        if let Some(x) = self.t_x.value_at(normalized_time, frame_index) {
+        if let Some(x) = self
+            .t_x
+            .value_at(normalized_time, frame_index, enable_start_override)
+        {
             values.x = x;
         }
-        if let Some(y) = self.t_y.value_at(normalized_time, frame_index) {
+        if let Some(y) = self
+            .t_y
+            .value_at(normalized_time, frame_index, enable_start_override)
+        {
             values.y = y;
         }
-        if let Some(scale) = self.t_scale.value_at(normalized_time, frame_index) {
+        if let Some(scale) =
+            self.t_scale
+                .value_at(normalized_time, frame_index, enable_start_override)
+        {
             values.scale = scale;
         }
     }
