@@ -1,7 +1,7 @@
 //! Creation and consumption of [`Timeline`] instances.
 
 use crate::easing::Easing;
-use crate::time_scale::{TimeScale, TimeScaleOutOfBounds};
+use crate::time_scale::{TimeScale, TimeScalePosition};
 use std::fmt::Debug;
 
 /// An animator timeline.
@@ -361,12 +361,10 @@ pub fn prepare_frame(
     if boundary_times.is_empty() {
         return None;
     }
-    let normalized_time = match timescale.get_normalized_time(time) {
-        Ok(t) => t,
-        Err(e) => match e {
-            TimeScaleOutOfBounds::NotStarted => 0.0,
-            TimeScaleOutOfBounds::Ended(t) => t,
-        },
+    let normalized_time = match timescale.get_position(time) {
+        TimeScalePosition::Active(t, _) => t,
+        TimeScalePosition::NotStarted => 0.0,
+        TimeScalePosition::Ended(t) => t,
     };
     let frame_index = match boundary_times.binary_search_by(|t| t.total_cmp(&normalized_time)) {
         Ok(index) => index,
@@ -388,9 +386,9 @@ mod tests {
         baz: f32,
     }
 
-    // Setting up a timeline without proc macros requires a lot of boilerplate, so instead we
-    // use fake timelines here. The stub is only capable of producing exact matches, i.e. does not
-    // interpolate between times.
+    // Setting up a timeline without proc macros requires a lot of boilerplate, so for the purposes
+    // of testing merged timelines, we instead  use fake timelines here. The stub is only capable of
+    // producing exact matches, i.e. does not interpolate between times.
     struct StubTimeline {
         frames: HashMap<OrderedFloat<f32>, StubFrame>,
     }
