@@ -462,10 +462,10 @@ mod tests {
         let timeline = TestTimeline::new(keyframes, Easing::OutQuad);
 
         assert_eq!(timeline.values_at(0.0).round(), TestValues::new(0, 0.0));
-        assert_eq!(timeline.values_at(0.2).round(), TestValues::new(19, 49.0));
+        assert_eq!(timeline.values_at(0.2).round(), TestValues::new(20, 49.0));
         assert_eq!(timeline.values_at(0.4).round(), TestValues::new(31, 78.0));
         assert_eq!(timeline.values_at(0.6).round(), TestValues::new(37, 94.0));
-        assert_eq!(timeline.values_at(0.8).round(), TestValues::new(39, 99.0));
+        assert_eq!(timeline.values_at(0.8).round(), TestValues::new(40, 99.0));
         assert_eq!(timeline.values_at(1.0).round(), TestValues::new(40, 100.0));
     }
 

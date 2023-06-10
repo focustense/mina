@@ -175,7 +175,7 @@ mod using_macro {
             Style { x: 60, y: 0 },  // 3s (repeated)
             Style { x: 45, y: 16 }, // 4s
             Style { x: 30, y: 32 }, // 5s
-            Style { x: 26, y: 48 }, // 6s
+            Style { x: 27, y: 48 }, // 6s
             Style { x: 23, y: 64 }, // 7s
             Style { x: 20, y: 80 }, // 8s (ended)
             Style { x: 20, y: 80 }, // 9s

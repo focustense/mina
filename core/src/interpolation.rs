@@ -72,8 +72,27 @@ where
     fn lerp(&self, y1: &Self, x: f32) -> Self {
         let a = self.to_f32().expect("Start value does not fit in an f32");
         let b = y1.to_f32().expect("End value does not fit in an f32");
-        Convertible::from_f32(a * (1.0 - x) + b * x)
-            .expect("Converted value was outside the valid range for this type.")
+        let result_f32 = a * (1.0 - x) + b * x;
+        let converted = Convertible::from_f32(result_f32)
+            .expect("Converted value was outside the valid range for this type.");
+
+        // HACK: Between floating-point imprecision and the fact that float-to-int conversions
+        // truncate rather than round, we can get some intuitive results for certain interpolations.
+        // However, we don't know here whether the conversion is actually to an integer type, unless
+        // we're willing to forego the blanket implementation.
+        //
+        // An ugly way to deal with this is to check the difference afterward, and correct if it's
+        // too large. This unfortunately adds a bit of overhead but isn't too noticeable.
+        //
+        // Such small errors generally do not matter with actual animations, but test code is more
+        // sensitive, and even outside of tests there may be odd edge cases such as someone trying
+        // to imitiate a step function using a narrow integer range.
+        if result_f32 - converted.to_f32().unwrap() > 0.5 {
+            Convertible::from_f32(result_f32 + 0.5)
+                .expect("Converted value was outside the valid range for this type.")
+        } else {
+            converted
+        }
     }
 }
 
@@ -86,7 +105,7 @@ mod tests {
     #[test]
     fn lerp_narrow_type_full_range() {
         test_lerp(0, 255, 0.0, 0u8);
-        test_lerp(0, 255, 0.25, 63u8);
+        test_lerp(0, 255, 0.25, 64u8);
         test_lerp(0, 255, 0.5, 127u8);
         test_lerp(0, 255, 1.0, 255u8);
     }
