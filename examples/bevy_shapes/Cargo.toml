@@ -1,0 +1,26 @@
+[package]
+name = "bevy_shapes"
+version = "0.1.0"
+edition = "2021"
+
+# https://github.com/rust-lang/cargo/issues/7880
+[workspace]
+
+[dependencies]
+bevy_mod_picking = { version = "0.13.0", default-features = false }
+bevy_vector_shapes = "0.4.5"
+enum-map = "2.5.0"
+mina = { path = "../.." }
+
+[dependencies.bevy]
+version = "0.10.1"
+default_features = false
+features = ["bevy_core_pipeline", "bevy_render", "bevy_sprite", "bevy_winit", "dynamic_linking"]
+
+# Enable a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
