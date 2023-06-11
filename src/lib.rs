@@ -4,11 +4,16 @@ pub use mina_core::{
     animator::{EnumStateAnimator, State, StateAnimator, StateAnimatorBuilder},
     easing::{Easing, EasingFunction},
     interpolation::Lerp,
-    time_scale::TimeScale,
     timeline::{
-        prepare_frame, Keyframe, KeyframeBuilder, MergedTimeline, Repeat, Timeline,
-        TimelineBuilder, TimelineBuilderArguments, TimelineConfiguration, TimelineOrBuilder,
+        Keyframe, KeyframeBuilder, MergedTimeline, Repeat, Timeline,
+        TimelineBuilder, TimelineConfiguration,
     },
+};
+
+#[doc(hidden)]
+pub use mina_core::{
+    time_scale::TimeScale,
+    timeline::{prepare_frame, TimelineBuilderArguments, TimelineOrBuilder},
     timeline_helpers::SubTimeline,
 };
 
