@@ -1,5 +1,4 @@
 use mina::prelude::*;
-use mina_core::animator::{StateAnimator, StateAnimatorBuilder};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, State)]
 enum Interaction {

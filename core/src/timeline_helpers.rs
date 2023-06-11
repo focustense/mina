@@ -113,9 +113,9 @@ impl<Value: Clone + Lerp> SubTimeline<Value> {
         }
     }
 
-    /// Temporarily changes this sub-timeline to start (at 0%, normalized time `0.0`) at a new
-    /// value. The original behavior can be restored with a call to
-    /// [`restore_start_value`](Self::restore_start_value).
+    /// Sets an override value to substitute for the first keyframe (at 0%, or `0.0` normalized
+    /// time), which will be used only when [`value_at`](Self::value_at) is called with
+    /// `enable_start_override` set to `true`.
     ///
     /// This is typically used when blending animations; the newly-active timeline begins where the
     /// previously-active timeline ended or was interrupted.

@@ -1,8 +1,6 @@
-use mina::{Easing, Repeat, Timeline, TimelineBuilder, TimelineConfiguration};
-use mina_core::{
-    time_scale::TimeScale,
-    timeline::{prepare_frame, Keyframe, KeyframeBuilder, TimelineBuilderArguments},
-    timeline_helpers::SubTimeline,
+use mina::{
+    prepare_frame, Easing, Keyframe, KeyframeBuilder, Repeat, SubTimeline, TimeScale, Timeline,
+    TimelineBuilder, TimelineBuilderArguments, TimelineConfiguration,
 };
 
 // Demonstrates how to write an entire set of timeline and keyframe classes explicitly, without
