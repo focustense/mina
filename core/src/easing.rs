@@ -14,7 +14,7 @@ use std::fmt::Debug;
 /// in lerp terminology), but `EasingFunction` can modify which `x` value the lerp will use in its
 /// evaluation. This has the same effect as using the easing function directly, because linear
 /// interpolation constitutes an identity function over normalized `y`.
-pub trait EasingFunction: Debug + DynClone {
+pub trait EasingFunction: Debug + DynClone + Send + Sync {
     /// Computes the `y` value along the curve for a given `x` position.
     ///
     /// Expects `x` to be normalized (from 0 to 1) and returns a normalized y-value which is
