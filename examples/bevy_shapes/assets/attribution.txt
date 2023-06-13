@@ -1,0 +1,5 @@
+Sprite assets in this directory are copied from the Superpowers Asset Packs, released under the CC0 license:
+
+https://github.com/sparklinlabs/superpowers-asset-packs
+
+Font is from: https://fonts.google.com/specimen/Luckiest+Guy

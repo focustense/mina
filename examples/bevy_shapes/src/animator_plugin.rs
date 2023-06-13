@@ -1,17 +1,18 @@
+use crate::registry::Registry;
 use bevy::prelude::*;
 use bevy_mod_picking::events::{Down, Out, Over, Up};
 use bevy_mod_picking::prelude::OnPointer;
+use enum_map::EnumArray;
 use mina::prelude::*;
-use std::marker::PhantomData;
 
 pub struct AnimatorPlugin {
-    registrations: Vec<Box<dyn AnimatorRegistration>>,
+    registry: Registry,
 }
 
 impl AnimatorPlugin {
     pub fn new() -> Self {
         Self {
-            registrations: Vec::new(),
+            registry: Registry::new(),
         }
     }
 
@@ -20,43 +21,16 @@ impl AnimatorPlugin {
         T: Timeline + Send + Sync + 'static,
         T::Target: Clone + Send + Sync,
     {
-        self.registrations
-            .push(Box::new(AnimatorRegistrationImpl::<T>::new()));
+        self.registry.add(|app| {
+            app.add_system(animate_all::<T>);
+        });
         self
     }
 }
 
 impl Plugin for AnimatorPlugin {
     fn build(&self, app: &mut App) {
-        for registration in &self.registrations {
-            registration.setup(app);
-        }
-    }
-}
-
-trait AnimatorRegistration: Send + Sync {
-    fn setup(&self, app: &mut App);
-}
-
-struct AnimatorRegistrationImpl<T: Timeline> {
-    phantom: PhantomData<T>,
-}
-
-impl<T: Timeline> AnimatorRegistrationImpl<T> {
-    pub fn new() -> Self {
-        Self {
-            phantom: PhantomData,
-        }
-    }
-}
-
-impl<T> AnimatorRegistration for AnimatorRegistrationImpl<T>
-where
-    T: Timeline + Send + Sync + 'static,
-    T::Target: Clone + Send + Sync,
-{
-    fn setup(&self, app: &mut App) {
-        app.add_system(animate_all::<T>);
+        self.registry.apply(app);
     }
 }
 
@@ -69,12 +43,15 @@ pub enum Interaction {
 }
 
 #[derive(Component)]
-pub struct Animator<T>(EnumStateAnimator<Interaction, T>)
+pub struct Animator<State, T>(pub EnumStateAnimator<State, T>)
 where
+    State: Clone + EnumArray<Option<MergedTimeline<T>>> + PartialEq,
     T: Timeline,
     T::Target: Clone;
 
-impl<T> Animator<T>
+pub type InteractionAnimator<T> = Animator<Interaction, T>;
+
+impl<T> InteractionAnimator<T>
 where
     T: Timeline,
     T::Target: Clone,
@@ -112,7 +89,7 @@ where
     T: Timeline + Send + Sync + 'static,
     T::Target: Clone + Send + Sync,
 {
-    pub animator: Animator<T>,
+    pub animator: InteractionAnimator<T>,
     pub pointer_over: OnPointer<Over>,
     pub pointer_out: OnPointer<Out>,
     pub pointer_down: OnPointer<Down>,
@@ -127,23 +104,31 @@ where
     pub fn new(animator: EnumStateAnimator<Interaction, T>) -> Self {
         Self {
             animator: Animator(animator),
-            pointer_over: OnPointer::<Over>::target_component_mut::<Animator<T>>(|_, animator| {
-                animator.set_over(true);
-            }),
-            pointer_out: OnPointer::<Out>::target_component_mut::<Animator<T>>(|_, animator| {
-                animator.set_over(false);
-            }),
-            pointer_down: OnPointer::<Down>::target_component_mut::<Animator<T>>(|_, animator| {
-                animator.set_down(true);
-            }),
-            pointer_up: OnPointer::<Up>::target_component_mut::<Animator<T>>(|_, animator| {
-                animator.set_down(false);
-            }),
+            pointer_over: OnPointer::<Over>::target_component_mut::<InteractionAnimator<T>>(
+                |_, animator| {
+                    animator.set_over(true);
+                },
+            ),
+            pointer_out: OnPointer::<Out>::target_component_mut::<InteractionAnimator<T>>(
+                |_, animator| {
+                    animator.set_over(false);
+                },
+            ),
+            pointer_down: OnPointer::<Down>::target_component_mut::<InteractionAnimator<T>>(
+                |_, animator| {
+                    animator.set_down(true);
+                },
+            ),
+            pointer_up: OnPointer::<Up>::target_component_mut::<InteractionAnimator<T>>(
+                |_, animator| {
+                    animator.set_down(false);
+                },
+            ),
         }
     }
 }
 
-fn animate_all<T>(time: Res<Time>, mut animators: Query<&mut Animator<T>>)
+fn animate_all<T>(time: Res<Time>, mut animators: Query<&mut InteractionAnimator<T>>)
 where
     T: Timeline + Send + Sync + 'static,
     T::Target: Clone + Send + Sync,

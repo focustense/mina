@@ -15,7 +15,7 @@ mina = { path = "../.." }
 [dependencies.bevy]
 version = "0.10.1"
 default_features = false
-features = ["bevy_core_pipeline", "bevy_render", "bevy_sprite", "bevy_winit", "dynamic_linking"]
+features = ["bevy_asset", "bevy_core_pipeline", "bevy_render", "bevy_sprite", "bevy_text", "bevy_winit", "png", "dynamic_linking"]
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

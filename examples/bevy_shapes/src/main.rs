@@ -1,213 +1,182 @@
-use crate::animator_plugin::{Animator, AnimatorBundle, AnimatorPlugin, Interaction};
-use bevy::{prelude::*, window::PrimaryWindow, winit::WinitSettings};
-use bevy_mod_picking::{
-    backend::{HitData, PointerHits},
-    picking_core::PickSet,
-    prelude::*,
-};
+use crate::arrow_button::{ArrowButtonBundle, ArrowButtonPlugin, ArrowDirection};
+use crate::carousel::{Carousel, CarouselPlugin};
+use crate::characters::{Character, CharacterSprites};
+use bevy::{prelude::*, time::common_conditions::on_timer, winit::WinitSettings};
+use bevy_mod_picking::prelude::*;
 use bevy_vector_shapes::prelude::*;
+use enum_map::enum_map;
 use mina::prelude::*;
-use std::f32::consts::PI;
+use std::cmp::Ordering;
+use std::time::Duration;
 
 mod animator_plugin;
+mod arrow_button;
+mod carousel;
+mod characters;
+mod registry;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(DefaultPickingPlugins)
         .add_plugin(Shape2dPlugin::default())
-        .add_plugin(AnimatorPlugin::new().add_timeline::<ArrowButtonTimeline>())
+        .add_plugin(ArrowButtonPlugin)
+        .add_plugin(CarouselPlugin::new().add_timeline::<CarouselItemTimeline>())
         .insert_resource(WinitSettings::game())
         .insert_resource(Msaa::Sample4)
         .insert_resource(ClearColor(Color::rgb(0.1, 0.1, 0.1)))
+        .init_resource::<CharacterSprites>()
+        .add_event::<NextCharacter>()
+        .add_event::<PreviousCharacter>()
         .add_startup_system(setup)
-        .add_system(arrow_button_picking.in_set(PickSet::Backend))
-        .add_system(ui)
+        .add_system(character_animation.run_if(on_timer(Duration::from_millis(80))))
+        .add_systems((character_carousel, character_navigate))
         .run();
 }
 
-const DASH_SEGMENTS: u32 = 16;
-
-#[derive(Animate, Clone)]
-struct ArrowButton {
-    #[animate] background_alpha: f32,
-    direction: ArrowDirection,
-    #[animate] focus_ring_alpha: f32,
-    #[animate] focus_ring_rotation: f32,
-    size: f32,
+#[derive(Animate, Clone, Component, Debug, Default)]
+struct CarouselItem {
+    alpha: f32,
+    x: f32,
 }
 
-// Required for animator. Can we do anything to eliminate the requirement?
-impl Default for ArrowButton {
-    fn default() -> Self {
-        Self {
-            direction: ArrowDirection::Right,
-            background_alpha: 0.0,
-            focus_ring_alpha: 0.0,
-            focus_ring_rotation: 0.0,
-            size: 0.0,
-        }
+struct NextCharacter;
+impl From<ListenedEvent<Click>> for NextCharacter {
+    fn from(_: ListenedEvent<Click>) -> Self {
+        NextCharacter
     }
 }
 
-impl ArrowButton {
-    fn new(direction: ArrowDirection, size: f32) -> Self {
-        Self {
-            direction,
-            size,
-            ..default()
-        }
-    }
-
-    fn selection_radius(&self) -> f32 {
-        self.size * 2.0
+struct PreviousCharacter;
+impl From<ListenedEvent<Click>> for PreviousCharacter {
+    fn from(_: ListenedEvent<Click>) -> Self {
+        PreviousCharacter
     }
 }
 
-#[derive(Clone)]
-enum ArrowDirection {
-    Left,
-    Right,
-}
-
-#[derive(Bundle)]
-struct ArrowButtonBundle {
-    animator: AnimatorBundle<ArrowButtonTimeline>,
-    spatial: SpatialBundle,
-}
-
-impl ArrowButtonBundle {
-    pub fn new(direction: ArrowDirection, x: f32, size: f32) -> Self {
-        let button = ArrowButton::new(direction, size);
-        Self {
-            spatial: SpatialBundle::from_transform(Transform::from_translation(Vec3::new(
-                x, 0.0, 0.0,
-            ))),
-            animator: AnimatorBundle::new(animator!(ArrowButton {
-                default(Interaction::None, button),
-                Interaction::None => [
-                    0.5s Easing::OutQuad to { background_alpha: 0.0, focus_ring_alpha: 0.0 },
-                    0.1s after 0.5s to { focus_ring_rotation: 0.0 }
-                ],
-                Interaction::Over => [
-                    1s Easing::In to { background_alpha: 1.0 },
-                    3s infinite Easing::In
-                        from { focus_ring_alpha: 0.05 }
-                        40% { focus_ring_alpha: 1.0 }
-                        70% { focus_ring_alpha: 1.0 }
-                        to { focus_ring_alpha: 0.05 },
-                    10s infinite 1% { focus_ring_rotation: 0.0 } to { focus_ring_rotation: PI },
-                ],
-                Interaction::Down => 0.5s Easing::OutCubic to {
-                    focus_ring_alpha: 1.0,
-                    focus_ring_rotation: 0.0
-                }
-            })),
-        }
-    }
-}
-
-fn setup(mut commands: Commands) {
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    character_sprites: Res<CharacterSprites>,
+) {
     commands.spawn(Camera2dBundle::default());
 
-    commands.spawn(ArrowButtonBundle::new(ArrowDirection::Left, -200.0, 25.0));
-    commands.spawn(ArrowButtonBundle::new(ArrowDirection::Right, 200.0, 25.0));
+    spawn_title(&mut commands, asset_server);
+
+    commands.spawn((
+        ArrowButtonBundle::new(ArrowDirection::Left, -300.0, 25.0),
+        OnPointer::<Click>::send_event::<PreviousCharacter>(),
+    ));
+    commands.spawn((
+        ArrowButtonBundle::new(ArrowDirection::Right, 300.0, 25.0),
+        OnPointer::<Click>::send_event::<NextCharacter>(),
+    ));
+
+    let mut spawn_character = |character| {
+        commands
+            .spawn((character_sprites.create(character), CarouselItem::default()))
+            .id()
+    };
+    let available_characters = enum_map! {
+        Character::Caveman => spawn_character(Character::Caveman),
+        Character::Eggshell => spawn_character(Character::Eggshell),
+        Character::Girl => spawn_character(Character::Girl),
+        Character::Lion => spawn_character(Character::Lion),
+    };
+    let carousel_id = commands
+        .spawn((create_carousel(400.0, 0.2), SpatialBundle::default()))
+        .id();
+    for (_, character_id) in &available_characters {
+        commands.entity(carousel_id).add_child(*character_id);
+    }
 }
 
-fn ui(
-    arrow_buttons: Query<(&Animator<ArrowButtonTimeline>, &Transform)>,
-    mut painter: ShapePainter,
+fn character_animation(
+    carousel: Query<&Carousel<CarouselItemTimeline>>,
+    mut sprites: Query<(Entity, &mut TextureAtlasSprite), With<Character>>,
 ) {
-    let dash_angle = PI / DASH_SEGMENTS as f32;
-    for (animator, transform) in &arrow_buttons {
-        let arrow_button = animator.current_values();
-
-        painter.transform = *transform;
-        painter.color = Color::rgba(0.05, 0.15, 0.2, arrow_button.background_alpha);
-        painter.hollow = false;
-        painter.circle(arrow_button.selection_radius() - 4.0);
-
-        painter.reset();
-        painter.transform = *transform;
-        painter.color = Color::SEA_GREEN;
-        painter.thickness = 4.0;
-        let rotation = match arrow_button.direction {
-            ArrowDirection::Left => PI / 2.0,
-            ArrowDirection::Right => -PI / 2.0,
-        };
-        painter.rotate_z(rotation);
-        painter.ngon(3.0, arrow_button.size);
-
-        painter.reset();
-        painter.transform = *transform;
-        painter.color = Color::rgba(0.8, 0.8, 0.8, arrow_button.focus_ring_alpha);
-        painter.cap = Cap::None;
-        painter.thickness = 4.0;
-        painter.hollow = true;
-        painter.rotate_z(arrow_button.focus_ring_rotation);
-        let mut arc_angle = 0.0;
-        for _i in 0..DASH_SEGMENTS {
-            let next_angle = arc_angle + dash_angle;
-            painter.arc(arrow_button.selection_radius(), arc_angle, next_angle);
-            arc_angle = next_angle + dash_angle;
+    let carousel = carousel.single();
+    for (entity, mut sprite) in sprites.iter_mut() {
+        if carousel.selected_entity() != Some(entity) {
+            continue;
         }
+        sprite.index = (sprite.index + 1) % 5;
     }
 }
 
-fn arrow_button_picking(
-    arrow_buttons: Query<(
-        Entity,
-        &Animator<ArrowButtonTimeline>,
-        &GlobalTransform,
-        &ComputedVisibility,
-    )>,
-    pointers: Query<(&PointerId, &PointerLocation)>,
-    cameras: Query<(Entity, &Camera, &GlobalTransform)>,
-    primary_window: Query<Entity, With<PrimaryWindow>>,
-    mut output: EventWriter<PointerHits>,
-) {
-    // Normally we should sort by Z order. In our toy example here, they'll never overlap.
-    for (pointer, location) in pointers.iter().filter_map(|(pointer, pointer_location)| {
-        pointer_location.location().map(|loc| (pointer, loc))
-    }) {
-        let (cam_entity, camera, cam_transform) = cameras
-            .iter()
-            .find(|(_, camera, _)| {
-                camera
-                    .target
-                    .normalize(Some(primary_window.single()))
-                    .unwrap()
-                    == location.target
-            })
-            .unwrap_or_else(|| panic!("No camera found associated with pointer {:?}", pointer));
-        let Some(cursor_pos_world) = camera.viewport_to_world_2d(cam_transform, location.position) else { continue; };
-        let picks = arrow_buttons
-            .iter()
-            .filter_map(|(entity, animator, transform, visibility)| {
-                if !visibility.is_visible() {
-                    return None;
-                }
-                let position = transform.translation().truncate();
-                let distance = position.distance(cursor_pos_world);
-                let button = animator.current_values();
-                if distance <= button.selection_radius() {
-                    Some((
-                        entity,
-                        HitData {
-                            camera: cam_entity,
-                            depth: 0.0,
-                            position: None,
-                            normal: None,
-                        },
-                    ))
-                } else {
-                    None
-                }
-            });
-        output.send(PointerHits {
-            pointer: *pointer,
-            picks: picks.collect(),
-            order: 0,
-        });
+fn character_carousel(mut items: Query<(&CarouselItem, &mut Transform, &mut TextureAtlasSprite)>) {
+    for (item, mut transform, mut sprite) in items.iter_mut() {
+        transform.translation.x = item.x;
+        sprite.color = Color::rgba(1.0, 1.0, 1.0, item.alpha);
     }
+}
+
+fn character_navigate(
+    mut carousel: Query<&mut Carousel<CarouselItemTimeline>>,
+    mut prev_events: EventReader<PreviousCharacter>,
+    mut next_events: EventReader<NextCharacter>,
+) {
+    let mut carousel = carousel.single_mut();
+    let offset = next_events.iter().count() as i32 - prev_events.iter().count() as i32;
+    match offset.cmp(&0) {
+        Ordering::Greater => carousel.move_next(),
+        Ordering::Less => carousel.move_previous(),
+        _ => {}
+    }
+}
+
+fn create_carousel(width: f32, move_duration_seconds: f32) -> Carousel<CarouselItemTimeline> {
+    let timeline = CarouselItem::timeline()
+        .duration_seconds(1.0)
+        .keyframe(
+            CarouselItem::keyframe(0.0)
+                .x(-width / 2.0)
+                .alpha(0.0)
+                .easing(Easing::InQuint),
+        )
+        .keyframe(CarouselItem::keyframe(0.05).alpha(0.0))
+        .keyframe(
+            CarouselItem::keyframe(0.5)
+                .x(0.0)
+                .alpha(1.0)
+                .easing(Easing::OutQuint),
+        )
+        .keyframe(CarouselItem::keyframe(0.95).alpha(0.0))
+        .keyframe(CarouselItem::keyframe(1.0).x(width / 2.0).alpha(0.0))
+        .build();
+    Carousel::new(timeline, move_duration_seconds)
+}
+
+fn spawn_title(commands: &mut Commands, asset_server: Res<AssetServer>) {
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                size: Size::width(Val::Percent(100.0)),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            parent.spawn(
+                TextBundle::from_section(
+                    "Select Character",
+                    TextStyle {
+                        font: asset_server.load("LuckiestGuy-Regular.ttf"),
+                        font_size: 48.0,
+                        color: Color::rgb(0.9, 0.9, 0.9),
+                    },
+                )
+                .with_style(Style {
+                    position_type: PositionType::Relative,
+                    position: UiRect {
+                        bottom: Val::Px(100.0),
+                        ..default()
+                    },
+                    ..default()
+                })
+                .with_text_alignment(TextAlignment::Center),
+            );
+        });
 }
