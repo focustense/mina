@@ -126,3 +126,42 @@ pub use mina_macros::animator;
 /// assert_eq!(values, Style { alpha: 0.4, size: 10 });
 /// ```
 pub use mina_macros::Animate;
+
+/// Configures and creates a [`Timeline`] for an [`Animate`](macro@Animate) type.
+///
+/// Provides a more ergonomic, CSS-like alternative to the builder syntax using
+/// [`TimelineConfiguration`] and [`TimelineBuilder`], producing the same result. Requires an
+/// [`Animate`] type for the values.
+///
+/// # Example
+///
+/// ```
+/// use mina::prelude::*;
+///
+/// #[derive(Animate, Clone, Debug, Default, PartialEq)]
+/// struct Style {
+///     alpha: f32,
+///     size: u16,
+/// }
+///
+/// fn main() {
+///     let timeline = timeline!(Style 2s reverse Easing::Out
+///         from { alpha: 0.5, size: 50 }
+///         to { alpha: 1.0, size: 100 });
+///
+///     let mut values = Style::default();
+///     timeline.update(&mut values, 0.25);
+///     assert_eq!(values, Style { alpha: 0.578125, size: 58 });
+///     timeline.update(&mut values, 0.5);
+///     assert_eq!(values, Style { alpha: 0.75, size: 75 });
+///     timeline.update(&mut values, 1.0);
+///     assert_eq!(values, Style { alpha: 1.0, size: 100 });
+///     timeline.update(&mut values, 1.25);
+///     assert_eq!(values, Style { alpha: 0.921875, size: 92 });
+///     timeline.update(&mut values, 1.5);
+///     assert_eq!(values, Style { alpha: 0.75, size: 75 });
+///     timeline.update(&mut values, 2.0);
+///     assert_eq!(values, Style { alpha: 0.5, size: 50 });
+/// }
+/// ```
+pub use mina_macros::timeline;

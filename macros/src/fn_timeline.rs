@@ -1,14 +1,82 @@
+use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::{
     braced, bracketed,
     parse::{Parse, ParseStream},
+    parse_macro_input,
     punctuated::Punctuated,
     spanned::Spanned,
-    token, Error, FieldValue, Lit, LitByte, LitFloat, LitInt, Member, Path, Result, Token,
+    token, Error, FieldValue, Lit, LitByte, LitFloat, LitInt, Member, Path, Result, Token, Type,
 };
 
-pub fn expand_timeline(name: &Path, config: &TimelineConfig) -> Result<TokenStream2> {
+pub fn timeline_impl(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as TimelineInput);
+    expand_timeline(input)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
+}
+
+fn expand_timeline(input: TimelineInput) -> Result<TokenStream2> {
+    let TimelineInput {
+        target_type,
+        config,
+    } = input;
+    let Type::Path(ref type_path) = target_type else {
+        return Err(Error::new(target_type.span(), "Timeline macro only supports use-types and type paths."));
+    };
+    let name = &type_path.path;
+    expand_timeline_or_merge(name, &config)
+}
+
+pub fn expand_timeline_or_merge(
+    name: &Path,
+    config: &TimelineOrMergeConfig,
+) -> Result<TokenStream2> {
+    if config.timelines.len() == 1 {
+        builder_create_timeline(name, &config.timelines[0])
+    } else {
+        let timeline_creators = config
+            .timelines
+            .iter()
+            .map(|cfg| builder_create_timeline(name, cfg))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(quote! {
+            ::mina::MergedTimeline::of([#(#timeline_creators),*])
+        })
+    }
+}
+
+fn builder_append_keyframe(name: &Path, config: &KeyframeConfig) -> Result<TokenStream2> {
+    let normalized_time = match &config.position {
+        KeyframePositionArgument::From(_) => 0.0,
+        KeyframePositionArgument::To(_) => 1.0,
+        KeyframePositionArgument::Percent(lit, _) => lit.as_f32()? * 0.01,
+    };
+    match &config.values {
+        KeyframeValues::Default(_) => Ok(quote! {
+            .keyframe(#name::keyframe(#normalized_time)
+                .values_from(#normalized_time, &default_values))
+        }),
+        KeyframeValues::Explicit(field_values, _) => {
+            let setters = field_values
+                .iter()
+                .map(|fv| {
+                    let Member::Named(field_name) = &fv.member else {
+                        return Err(Error::new(fv.span(), "Animator macro only supports named fields."));
+                    };
+                    let expr = &fv.expr;
+                    Ok(quote! { .#field_name(#expr) })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok(quote! {
+                .keyframe(#name::keyframe(#normalized_time)#(#setters)*)
+            })
+        }
+    }
+}
+
+fn builder_create_timeline(name: &Path, config: &TimelineConfig) -> Result<TokenStream2> {
     let duration = match &config.duration {
         Some(duration) => Some(duration.value.as_f32()? * seconds_multiplier(&duration.value)?),
         None => None,
@@ -54,58 +122,26 @@ pub fn expand_timeline(name: &Path, config: &TimelineConfig) -> Result<TokenStre
     })
 }
 
-pub fn expand_timeline_or_merge(
-    name: &Path,
-    config: &TimelineOrMergeConfig,
-) -> Result<TokenStream2> {
-    if config.timelines.len() == 1 {
-        expand_timeline(name, &config.timelines[0])
-    } else {
-        let timeline_creators = config
-            .timelines
-            .iter()
-            .map(|cfg| expand_timeline(name, cfg))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(quote! {
-            ::mina::MergedTimeline::of([#(#timeline_creators),*])
-        })
-    }
-}
-
-fn builder_append_keyframe(name: &Path, config: &KeyframeConfig) -> Result<TokenStream2> {
-    let normalized_time = match &config.position {
-        KeyframePositionArgument::From(_) => 0.0,
-        KeyframePositionArgument::To(_) => 1.0,
-        KeyframePositionArgument::Percent(lit, _) => lit.as_f32()? * 0.01,
-    };
-    match &config.values {
-        KeyframeValues::Default(_) => Ok(quote! {
-            .keyframe(#name::keyframe(#normalized_time)
-                .values_from(#normalized_time, &default_values))
-        }),
-        KeyframeValues::Explicit(field_values, _) => {
-            let setters = field_values
-                .iter()
-                .map(|fv| {
-                    let Member::Named(field_name) = &fv.member else {
-                        return Err(Error::new(fv.span(), "Animator macro only supports named fields."));
-                    };
-                    let expr = &fv.expr;
-                    Ok(quote! { .#field_name(#expr) })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            Ok(quote! {
-                .keyframe(#name::keyframe(#normalized_time)#(#setters)*)
-            })
-        }
-    }
-}
-
 fn seconds_multiplier(num_lit: &NumericLit) -> Result<f32> {
     match num_lit.suffix() {
         "s" => Ok(1.0),
         "ms" => Ok(0.001),
         _ => Err(Error::new(num_lit.span(), "blah")),
+    }
+}
+
+#[cfg_attr(feature = "parse-debug", derive(Debug))]
+struct TimelineInput {
+    target_type: Type,
+    config: TimelineOrMergeConfig,
+}
+
+impl Parse for TimelineInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(Self {
+            target_type: input.parse()?,
+            config: input.parse()?,
+        })
     }
 }
 

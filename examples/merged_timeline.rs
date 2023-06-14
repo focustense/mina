@@ -31,34 +31,17 @@ struct Model {
 fn model(app: &App) -> Model {
     let _window = app.new_window().size(800, 450).view(view).build().unwrap();
     let slider = Slider::default();
-    let vertical_timeline = Slider::timeline()
-        .duration_seconds(20.0)
-        .repeat(Repeat::Infinite)
-        .reverse(true)
-        .default_easing(Easing::Linear)
-        .keyframe(Slider::keyframe(0.0).y(150.0))
-        .keyframe(Slider::keyframe(1.0).y(-150.0))
-        .build();
-    let horizontal_timeline = Slider::timeline()
-        .duration_seconds(5.0)
-        .repeat(Repeat::Infinite)
-        .reverse(true)
-        .default_easing(Easing::InOutCirc)
-        .keyframe(Slider::keyframe(0.0).x(-350.0).rotation(0.0))
-        .keyframe(Slider::keyframe(1.0).x(350.0).rotation(PI * 16.0))
-        .build();
-    let color_timeline = Slider::timeline()
-        .duration_seconds(30.0)
-        .repeat(Repeat::Infinite)
-        .keyframe(Slider::keyframe(0.0).hue(140.0))
-        .keyframe(Slider::keyframe(1.0).hue(500.0))
-        .build();
-    let merged_timeline =
-        MergedTimeline::of([vertical_timeline, horizontal_timeline, color_timeline]);
+    let timeline = timeline!(Slider [
+        20s infinite reverse from { y: 150.0 } to { y: -150.0 },
+        5s infinite reverse Easing::InOutCirc
+            from { x: -350.0, rotation: 0.0 }
+            to { x: 350.0, rotation: PI * 16.0 },
+        30s infinite from { hue: 140.0 } to {hue: 500.0 },
+    ]);
     Model {
         _window,
         slider,
-        timeline: merged_timeline,
+        timeline,
     }
 }
 

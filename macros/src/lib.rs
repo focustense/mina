@@ -15,3 +15,8 @@ pub fn animator(input: TokenStream) -> TokenStream {
 pub fn derive_animate(input: TokenStream) -> TokenStream {
     derive_animate::animate_impl(input)
 }
+
+#[proc_macro]
+pub fn timeline(input: TokenStream) -> TokenStream {
+    fn_timeline::timeline_impl(input)
+}

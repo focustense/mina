@@ -79,15 +79,11 @@ fn model(app: &App) -> Model {
     let mut bounce_color = Srgba::from(ORANGE);
     bounce_color.alpha = 120;
     let bounce_shapes = [Shape::new(0.0, -100.0, 25.0, bounce_color); 10];
-    let bounce_timeline = Shape::timeline()
-        .duration_seconds(5.0)
-        .repeat(Repeat::Infinite)
-        .reverse(true)
-        .default_easing(Easing::InOutQuint)
-        .keyframe(Shape::keyframe(0.0).x(-300.0).size(15.0))
-        .keyframe(Shape::keyframe(0.5).size(5.0))
-        .keyframe(Shape::keyframe(1.0).x(300.0).size(15.0))
-        .build();
+    let bounce_timeline = timeline!(
+        Shape 5s infinite reverse Easing::InOutQuint
+            from { x: -300.0, size: 15.0 }
+            50% { size: 5.0 }
+            to { x: 300.0, size: 15.0 });
 
     Model {
         _window,
