@@ -4,6 +4,7 @@ use proc_macro::TokenStream;
 
 mod derive_animate;
 mod fn_animator;
+mod fn_timeline;
 
 #[proc_macro]
 pub fn animator(input: TokenStream) -> TokenStream {
