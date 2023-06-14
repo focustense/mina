@@ -21,11 +21,12 @@ impl Plugin for ArrowButtonPlugin {
 
 #[derive(Animate, Clone)]
 pub struct ArrowButton {
-    #[animate] pub background_alpha: f32,
-    pub direction: ArrowDirection,
-    #[animate] pub focus_ring_alpha: f32,
-    #[animate] pub focus_ring_rotation: f32,
-    pub size: f32,
+    #[animate] background_alpha: f32,
+    #[animate] background_lightness: f32,
+    direction: ArrowDirection,
+    #[animate] focus_ring_alpha: f32,
+    #[animate] focus_ring_rotation: f32,
+    size: f32,
 }
 
 // Required for animator. Can we do anything to eliminate the requirement?
@@ -34,6 +35,7 @@ impl Default for ArrowButton {
         Self {
             direction: ArrowDirection::Right,
             background_alpha: 0.0,
+            background_lightness: 0.0,
             focus_ring_alpha: 0.0,
             focus_ring_rotation: 0.0,
             size: 0.0,
@@ -77,10 +79,12 @@ impl ArrowButtonBundle {
             animator: AnimatorBundle::new(animator!(ArrowButton {
                 default(Interaction::None, button),
                 Interaction::None => [
+                    0.1s Easing::OutCubic to { background_lightness: 0.0 },
                     0.5s Easing::OutQuad to { background_alpha: 0.0, focus_ring_alpha: 0.0 },
                     0.1s after 0.5s to { focus_ring_rotation: 0.0 }
                 ],
                 Interaction::Over => [
+                    0.1s Easing::OutCubic to { background_lightness: 0.0 },
                     1s Easing::In to { background_alpha: 1.0 },
                     3s infinite Easing::In
                         from { focus_ring_alpha: 0.05 }
@@ -89,10 +93,14 @@ impl ArrowButtonBundle {
                         to { focus_ring_alpha: 0.05 },
                     10s infinite 1% { focus_ring_rotation: 0.0 } to { focus_ring_rotation: PI },
                 ],
-                Interaction::Down => 0.5s Easing::OutCubic to {
-                    focus_ring_alpha: 1.0,
-                    focus_ring_rotation: 0.0
-                }
+                Interaction::Down => [
+                    0.5s Easing::OutCubic to {
+                        background_alpha: 0.8,
+                        focus_ring_alpha: 1.0,
+                        focus_ring_rotation: 0.0
+                    },
+                    2s Easing::InOutCubic to { background_lightness: 0.15 } reverse infinite,
+                ]
             })),
         }
     }
@@ -167,7 +175,10 @@ fn draw_arrows(
         let arrow_button = animator.current_values();
 
         painter.transform = *transform;
-        painter.color = Color::rgba(0.05, 0.15, 0.2, arrow_button.background_alpha);
+        painter.color = lighten(
+            Color::rgba(0.05, 0.15, 0.2, arrow_button.background_alpha),
+            arrow_button.background_lightness,
+        );
         painter.hollow = false;
         painter.circle(arrow_button.selection_radius() - 4.0);
 
@@ -195,5 +206,16 @@ fn draw_arrows(
             painter.arc(arrow_button.selection_radius(), arc_angle, next_angle);
             arc_angle = next_angle + dash_angle;
         }
+    }
+}
+
+fn lighten(color: Color, added_lightness: f32) -> Color {
+    let Color::Lcha { lightness, chroma, hue, alpha } =
+        color.as_lcha() else { return color; };
+    Color::Lcha {
+        lightness: lightness + added_lightness,
+        chroma,
+        hue,
+        alpha,
     }
 }
