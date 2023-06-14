@@ -1,6 +1,6 @@
 use crate::arrow_button::{ArrowButtonBundle, ArrowButtonPlugin, ArrowDirection};
 use crate::carousel::{Carousel, CarouselPlugin};
-use crate::characters::{Character, CharacterSprites};
+use crate::characters::{Character, CharacterPlugin, CharacterSprites};
 use bevy::{prelude::*, time::common_conditions::on_timer, winit::WinitSettings};
 use bevy_mod_picking::prelude::*;
 use bevy_vector_shapes::prelude::*;
@@ -21,11 +21,11 @@ fn main() {
         .add_plugins(DefaultPickingPlugins)
         .add_plugin(Shape2dPlugin::default())
         .add_plugin(ArrowButtonPlugin)
+        .add_plugin(CharacterPlugin)
         .add_plugin(CarouselPlugin::new().add_timeline::<CarouselItemTimeline>())
         .insert_resource(WinitSettings::game())
         .insert_resource(Msaa::Sample4)
         .insert_resource(ClearColor(Color::rgb(0.1, 0.1, 0.1)))
-        .init_resource::<CharacterSprites>()
         .add_event::<NextCharacter>()
         .add_event::<PreviousCharacter>()
         .add_startup_system(setup)
@@ -37,6 +37,7 @@ fn main() {
 #[derive(Animate, Clone, Component, Debug, Default)]
 struct CarouselItem {
     alpha: f32,
+    scale: f32,
     x: f32,
 }
 
@@ -106,6 +107,7 @@ fn character_animation(
 
 fn character_carousel(mut items: Query<(&CarouselItem, &mut Transform, &mut TextureAtlasSprite)>) {
     for (item, mut transform, mut sprite) in items.iter_mut() {
+        transform.scale = Vec3::splat(item.scale);
         transform.translation.x = item.x;
         sprite.color = Color::rgba(1.0, 1.0, 1.0, item.alpha);
     }
@@ -131,6 +133,7 @@ fn create_carousel(width: f32, move_duration_seconds: f32) -> Carousel<CarouselI
         .keyframe(
             CarouselItem::keyframe(0.0)
                 .x(-width / 2.0)
+                .scale(0.75)
                 .alpha(0.0)
                 .easing(Easing::InQuint),
         )
@@ -138,11 +141,12 @@ fn create_carousel(width: f32, move_duration_seconds: f32) -> Carousel<CarouselI
         .keyframe(
             CarouselItem::keyframe(0.5)
                 .x(0.0)
+                .scale(1.0)
                 .alpha(1.0)
                 .easing(Easing::OutQuint),
         )
         .keyframe(CarouselItem::keyframe(0.95).alpha(0.0))
-        .keyframe(CarouselItem::keyframe(1.0).x(width / 2.0).alpha(0.0))
+        .keyframe(CarouselItem::keyframe(1.0).x(width / 2.0).scale(0.75).alpha(0.0))
         .build();
     Carousel::new(timeline, move_duration_seconds)
 }

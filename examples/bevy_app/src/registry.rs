@@ -1,7 +1,13 @@
-// Utilities to help with setup and registration of generic systems.
-
 use bevy::prelude::*;
 
+/// Tracks a set of registration closures that will be executed when setting up the Bevy app.
+///
+/// This small utility exists to slightly improve the ergonomics of plugins that are meant to deal
+/// with generic types and register generic systems. The animator and carousel plugins both use
+/// generic systems and therefore need to know (by having the caller _register_) the particular
+/// types that will be used. There's a non-trivial amount of boilerplate to go along with this
+/// registration and it's always exactly the same except for the 1-line function that acts on the
+/// Bevy [`App`].
 pub struct Registry {
     registrations: Vec<Box<dyn Registration>>,
 }

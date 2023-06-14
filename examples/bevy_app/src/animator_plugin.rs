@@ -5,6 +5,16 @@ use bevy_mod_picking::prelude::OnPointer;
 use enum_map::EnumArray;
 use mina::prelude::*;
 
+/// Plugin for integrating the [`StateAnimator`] and related types with Bevy.
+///
+/// For each timeline type registered via [`AnimatorPlugin::add_timeline`], when an
+/// [`AnimatorBundle`] is spawned with some animator, it will automatically set up Bevy's picking
+/// mod to update the animator state based on mouse interactions, as well as advancing the animation
+/// on every frame. It may still be up to the app to decide what to do with the animated values.
+///
+/// Note: Several types work on the specific [`EnumStateAnimator`] struct, but supposing we were
+/// willing to sacrifice a tiny bit of performance for ergonomics, this could easily be made to work
+/// on any boxed implementation of [`StateAnimator`].
 pub struct AnimatorPlugin {
     registry: Registry,
 }
@@ -16,6 +26,10 @@ impl AnimatorPlugin {
         }
     }
 
+    /// Registers a timeline type for animation.
+    ///
+    /// This method only needs to know the [`Timeline`] type in order to resolve the correct
+    /// animator and system types.
     pub fn add_timeline<T>(mut self) -> Self
     where
         T: Timeline + Send + Sync + 'static,
@@ -34,14 +48,18 @@ impl Plugin for AnimatorPlugin {
     }
 }
 
+/// Simple animator state representing common mouse interactions.
 #[derive(Clone, Default, Eq, PartialEq, State)]
 pub enum Interaction {
-    #[default]
-    None,
+    /// No mouse interaction.
+    #[default] None,
+    /// Mouse cursor is over the target, but button is not pressed.
     Over,
+    /// Mouse cursor is over the target, _and_ button is pressed.
     Down,
 }
 
+/// Newtype for an animator in order to make it a bevy [`Component`].
 #[derive(Component)]
 pub struct Animator<State, T>(pub EnumStateAnimator<State, T>)
 where
@@ -49,6 +67,7 @@ where
     T: Timeline,
     T::Target: Clone;
 
+/// Type alias for the type of animator we generally care about, using [`Interaction`] for state.
 pub type InteractionAnimator<T> = Animator<Interaction, T>;
 
 impl<T> InteractionAnimator<T>
@@ -56,11 +75,12 @@ where
     T: Timeline,
     T::Target: Clone,
 {
+    /// Gets the current animator values.
     pub fn current_values(&self) -> &T::Target {
         self.0.current_values()
     }
 
-    pub fn set_down(&mut self, is_down: bool) {
+    fn set_down(&mut self, is_down: bool) {
         let was_down = self.0.current_state() == &Interaction::Down;
         if is_down != was_down {
             // In bevy_mod_picking, click/up events can only happen when the cursor is still over
@@ -74,7 +94,7 @@ where
         }
     }
 
-    pub fn set_over(&mut self, is_over: bool) {
+    fn set_over(&mut self, is_over: bool) {
         if !is_over {
             self.0.set_state(&Interaction::None);
         } else if self.0.current_state() != &Interaction::Down {
@@ -83,17 +103,21 @@ where
     }
 }
 
+/// Utility bundle for a component that animates according to pointer events.
+///
+/// Requires the Bevy Picking mod to be active, and updates an [`Interaction`]-based animator
+/// according to mouse over/out/down/up events.
 #[derive(Bundle)]
 pub struct AnimatorBundle<T>
 where
     T: Timeline + Send + Sync + 'static,
     T::Target: Clone + Send + Sync,
 {
-    pub animator: InteractionAnimator<T>,
-    pub pointer_over: OnPointer<Over>,
-    pub pointer_out: OnPointer<Out>,
-    pub pointer_down: OnPointer<Down>,
-    pub pointer_up: OnPointer<Up>,
+    animator: InteractionAnimator<T>,
+    pointer_over: OnPointer<Over>,
+    pointer_out: OnPointer<Out>,
+    pointer_down: OnPointer<Down>,
+    pointer_up: OnPointer<Up>,
 }
 
 impl<T> AnimatorBundle<T>

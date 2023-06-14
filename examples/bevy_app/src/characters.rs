@@ -1,6 +1,19 @@
 use bevy::prelude::*;
 use enum_map::Enum;
 
+/// Provides the character sprites.
+///
+/// There is nothing interesting animation-wise about this plugin; it's bog-standard Bevy asset
+/// management and is kept in a separate module for this example so that it's out of the way of the
+/// more interesting parts.
+pub struct CharacterPlugin;
+
+impl Plugin for CharacterPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<CharacterSprites>();
+    }
+}
+
 const SPRITE_SHEET_COLUMNS: usize = 6;
 const SPRITE_SHEET_ROWS: usize = 7;
 

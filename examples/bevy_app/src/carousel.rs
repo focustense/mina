@@ -2,6 +2,37 @@ use crate::registry::Registry;
 use bevy::prelude::*;
 use mina::prelude::*;
 
+/// Plugin for the [`Carousel`] component, which aids in the creation of a faux-cylindrical carousel
+/// UI in which there is one active item, and inactive items scroll and fade out of view.
+///
+/// The carousel is generic and does not enforce any particular meaning of "left" or "right";
+/// instead it accepts any [`Timeline`] and does the work of mapping standard Bevy [`Children`]
+/// to positions on the timeline, based on which item is primarily in view (or coming into view).
+/// It will then, for each child, update whatever style component the timeline is based on.
+///
+/// In addition to looking fancy, this shows an example of a more unconventional use of the timeline
+/// system. We can't reliably use state animators, partly because there is no real "state" to begin
+/// with, and partly because there are an unknown number of components to animate and their style
+/// varies by both time _and_ position.
+///
+/// The solution is a bit of a mind trick: although we do ultimately have to move and style the
+/// individual sprites, we can more easily conceive of the _carousel itself_ being what moves. Thus
+/// the entire carousel can be represented by a single animation timeline, except that the "x" value
+/// represents _position_ rather than time, where position is circular and corresponds to the
+/// currently-selected item in the carousel. In other words, when a new item is selected, we "turn"
+/// the entire carousel, and only afterward propagate the info down to children.
+///
+/// The reason for not using a second, indirect timeline to control the position of the carousel
+/// itself is the "circular" or wraparound motion. It's easy to implement if we don't allow further
+/// scrolling when the carousel is at either edge, or if we allow the carousel to scroll in the
+/// opposite direction when navigating "forward" from the last item back to the first. But if we
+/// want to create the illusion of an infinite, literally circular or cylindrical carousel that can
+/// be turned forever in the same direction, then it requires a little more finesse than a timeline
+/// can provide on its own.
+///
+/// Most uses of the animation system are _not_ this complicated. This is intended as a demo of the
+/// flexibility: instead of letting the animators run everything, we can use some of the lower-level
+/// types to create more unusual effects.
 pub struct CarouselPlugin {
     registry: Registry,
 }

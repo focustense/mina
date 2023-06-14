@@ -9,6 +9,20 @@ use bevy_vector_shapes::prelude::*;
 use mina::prelude::*;
 use std::f32::consts::PI;
 
+/// Components and systems for the animated arrow button.
+///
+/// Fades in a translucent background on hover and displays a pulsing, rotating focus ring. On
+/// click, performs an additional "ratchet" animation with the border and pulses the color.
+///
+/// This collection represents the most conventional usage in a Bevy app. It relies on regular 2D
+/// components and the Picking mod instead of Bevy UI because it's hard to do anything very
+/// intricate in Bevy UI without the use of custom shaders, nine-patches, etc. Using the Bevy Shapes
+/// crate means we can represent everything in code. This does require a custom picking backend
+/// since there isn't anything like a sprite or mesh to check bounds or raycast.
+///
+/// In terms of the animations, it is using the [`animate`] macro and [`StateAnimator`] trait "as
+/// intended", simply allowing the animator to control the style as states change, and reporting
+/// state changes to the animator through the picking components.
 pub struct ArrowButtonPlugin;
 
 impl Plugin for ArrowButtonPlugin {
@@ -52,7 +66,7 @@ impl ArrowButton {
         }
     }
 
-    pub fn selection_radius(&self) -> f32 {
+    fn selection_radius(&self) -> f32 {
         self.size * 2.0
     }
 }
