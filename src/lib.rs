@@ -1,3 +1,148 @@
+//! Mina is a framework-independent animation library focused on ergonomics, aiming to bring the
+//! simplicity and versatility of CSS transitions and animations to Rust.
+//!
+//! # Features
+//!
+//! - Turn any ordinary `struct` into an animator or animated type.
+//! - Create state-driven animators that automatically blend between states.
+//! - Provides (almost) all standard [easings](https://easings.net/) out of the box, with the option
+//!   to add custom curves or functions.
+//! - Define animations using a concise, CSS-like syntax, and state transitions using a style
+//!   similar to CSS pseudo-classes.
+//! - Animate any property type that supports [linear interpolation](crate::Lerp).
+//! - Easily specify delayed, repeating or reversing animations.
+//! - Merge heterogeneous animations/transitions into a single timeline; e.g. define a _single_
+//!   animation that pulses in and out infinitely but also scales or slides in only once.
+//! - Use with any GUI or creative coding environment -
+//!   [integration examples](https://github.com/focustense/mina/tree/main/examples) are provided for
+//!   [nannou](https://nannou.cc/), [bevy](https://bevyengine.org/) and
+//!   [iced](https://github.com/iced-rs/iced).
+//!
+//! # Timeline Example
+//!
+//! The [`Timeline`] is the most basic abstraction and defines a single, state-independent animation
+//! over a time axis.
+//!
+//! Suppose we want to animate both the size and position of some entity over time. It will be small
+//! at each edge and largest in the middle:
+//!
+//! ```
+//! use mina::prelude::*;
+//!
+//! #[derive(Animate, Clone, Debug, Default, PartialEq)]
+//! struct Style {
+//!   x: i32,
+//!   size: u32,
+//! }
+//!
+//! let timeline = timeline!(Style 10s
+//!     from { x: -200, size: 10 }
+//!     50% { x: 0, size: 20 }
+//!     to { x: 200, size: 10});
+//!
+//! let mut style = Style::default();
+//! timeline.update(&mut style, 2.5);
+//! assert_eq!(style, Style { x: -100, size: 15 });
+//! ```
+//!
+//! Note: in the above code, [`Clone`] and [`Default`] are required traits for any timeline-able
+//! type, but [`Debug`] and [`PartialEq`] are only needed for the assertions and are not required
+//! for regular usage.
+//!
+//! `from` and `to` are aliases for `0%` and `100%` respectively. Either may be used, but the former
+//! are more idiomatic and tend to improve readability.
+//!
+//! # Animator Example
+//!
+//! [`StateAnimator`] types own many timelines, as well as the style or other structure being
+//! animated, and are meant to be driven directly by an event loop. Instead of requesting the
+//! properties at a particular time, as in the [`Timeline`] example above, you interact with
+//! animators by notifying them of elapsed time and state changes.
+//!
+//! Suppose we are designing an animated button; when hovered, it receives an elevation, and when
+//! pressed, it slightly increases in size.
+//!
+//! ```
+//! use mina::prelude::*;
+//!
+//! #[derive(Animate, Clone, Debug, Default, PartialEq)]
+//! struct Style {
+//!     elevation: f32,
+//!     scale: f32,
+//! }
+//!
+//! #[derive(Clone, Default, PartialEq, State)]
+//! enum State {
+//!     #[default] Idle,
+//!     Hovered,
+//!     Pressed,
+//! }
+//!
+//! let mut animator = animator!(Style {
+//!     default(State::Idle, { elevation: 0.0, scale: 1.0 }),
+//!     State::Idle => 0.25s to default,
+//!     State::Hovered => 0.5s to { elevation: 5.0, scale: 1.0 },
+//!     State::Pressed => 0.1s to { scale: 1.1 }
+//! });
+//!
+//! assert_eq!(animator.current_values(), &Style { elevation: 0.0, scale: 1.0 }); // Default
+//! animator.advance(1.0); // No change in state
+//! assert_eq!(animator.current_values(), &Style { elevation: 0.0, scale: 1.0 });
+//! animator.set_state(&State::Hovered);
+//! assert_eq!(animator.current_values(), &Style { elevation: 0.0, scale: 1.0 }); // No time elapsed
+//! animator.advance(0.25);
+//! assert_eq!(animator.current_values(), &Style { elevation: 2.5, scale: 1.0 });
+//! animator.set_state(&State::Pressed); // Change state before animation is finished
+//! assert_eq!(animator.current_values(), &Style { elevation: 2.5, scale: 1.0 }); // No time elapsed
+//! animator.advance(0.05);
+//! assert_eq!(animator.current_values(), &Style { elevation: 2.5, scale: 1.05 });
+//! ```
+//!
+//! The [`Clone`], [`Default`] and [`PartialEq`] traits **are all** required for any type to be used
+//! as an animator state. [`State`] is an alias for
+//! [Enum](https://docs.rs/enum-map/latest/enum_map/trait.Enum.html), and currently required for the
+//! [`EnumStateAnimator`] and [`animator`] macro.
+//!
+//! The `default(state, props)` line is not required, but supported for specific and relatively
+//! common cases where the default resting values _for that animation_ do not match the [`Default`]
+//! implementation for the corresponding `struct`, or in the (less common) case that the default
+//! _state_ for the animation should be different from the default enum member. In the above
+//! example, the derived `Default` implementation would give a `scale` of `0.0`, but the normal
+//! scale of the button should be `1.0`, so we override the default.
+//!
+//! The same `default` term _within_ an animation state has a different meaning, and is interpreted
+//! as "use the default (for this animator) values for this keyframe". This helps avoid repetitive,
+//! copy-paste code for  default/idle states that should simply return the widget to its base state.
+//!
+//! Note how the `Hovered` state specifies a `scale` that is the same as the default. The reason for
+//! this is to tell the animator that when transitioning from `Pressed` back to `Hovered`, it should
+//! revert the scale transform used for `Pressed`. Mina does **not** assume that undefined values in
+//! a keyframe should use defaults, and this is a very important property for merged timelines and
+//! more advanced animations in general. If a keyframe is missing one or more properties, those
+//! properties are _ignored_:
+//! - If there are earlier or later keyframes that do specify them, then it will animate smoothly
+//!   between those keyframes. This applies to both [`Timeline`] and [`StateAnimator`].
+//! - If any given state does not specify any keyframes at all with some properties, then the
+//!   properties will _not animate_ when in that state; they will remain at whichever values the
+//!   previous state left them in.
+//!
+//! The actual implementation of `elevation` and `scale` are up to the underlying GUI. Mina doesn't
+//! care about the meaning of these properties, it just animates their values; the plumbing will
+//! vary with the specific GUI in use. Future updates may include standard integrations with those
+//! GUIs, but for now, the [examples](https://github.com/focustense/mina/tree/main/examples)
+//! directory serves as the unofficial integration how-to guide, as well as the repository for more
+//! complex and interesting uses of the API.
+//!
+//! # Event Loop
+//!
+//! Mina doesn't use its own event loop, so that it can instead be integrated into the event loop of
+//! whichever GUI is actually in use. This also allows global customizations - for example, stopping
+//! all animations when a game is paused, or playing them in slow motion during some key event.
+//!
+//! In most cases, establishing the event loop is a one- or two-line function. Refer to the
+//! [examples](https://github.com/focustense/mina/tree/main/examples) for framework-specific
+//! patterns.
+
 pub mod prelude;
 
 pub use mina_core::{
@@ -47,26 +192,24 @@ pub use mina_core::{
 ///     size: u16,
 /// }
 ///
-/// fn main() {
-///     let mut animator = animator!(Style {
-///         default(State::Idle, { alpha: 0.5, size: 60 }),
-///         State::Idle => 2s Easing::OutQuad to default,
-///         State::Active => 1s Easing::Linear to { alpha: 1.0, size: 80 }
-///     });
+/// let mut animator = animator!(Style {
+///     default(State::Idle, { alpha: 0.5, size: 60 }),
+///     State::Idle => 2s Easing::OutQuad to default,
+///     State::Active => 1s Easing::Linear to { alpha: 1.0, size: 80 }
+/// });
 ///
-///     animator.advance(12.0);
-///     assert_eq!(animator.current_values(), &Style { alpha: 0.5, size: 60 });
-///     animator.set_state(&State::Active);
-///     assert_eq!(animator.current_values(), &Style { alpha: 0.5, size: 60 });
-///     animator.advance(0.5);
-///     assert_eq!(animator.current_values(), &Style { alpha: 0.75, size: 70 });
-///     animator.set_state(&State::Idle);
-///     assert_eq!(animator.current_values(), &Style { alpha: 0.75, size: 70 });
-///     animator.advance(0.8);
-///     assert_eq!(animator.current_values(), &Style { alpha: 0.554, size: 62 });
-///     animator.advance(1.2);
-///     assert_eq!(animator.current_values(), &Style { alpha: 0.5, size: 60 });
-/// }
+/// animator.advance(12.0);
+/// assert_eq!(animator.current_values(), &Style { alpha: 0.5, size: 60 });
+/// animator.set_state(&State::Active);
+/// assert_eq!(animator.current_values(), &Style { alpha: 0.5, size: 60 });
+/// animator.advance(0.5);
+/// assert_eq!(animator.current_values(), &Style { alpha: 0.75, size: 70 });
+/// animator.set_state(&State::Idle);
+/// assert_eq!(animator.current_values(), &Style { alpha: 0.75, size: 70 });
+/// animator.advance(0.8);
+/// assert_eq!(animator.current_values(), &Style { alpha: 0.554, size: 62 });
+/// animator.advance(1.2);
+/// assert_eq!(animator.current_values(), &Style { alpha: 0.5, size: 60 });
 /// ```
 pub use mina_macros::animator;
 
@@ -144,24 +287,22 @@ pub use mina_macros::Animate;
 ///     size: u16,
 /// }
 ///
-/// fn main() {
-///     let timeline = timeline!(Style 2s reverse Easing::Out
-///         from { alpha: 0.5, size: 50 }
-///         to { alpha: 1.0, size: 100 });
+/// let timeline = timeline!(Style 2s reverse Easing::Out
+///     from { alpha: 0.5, size: 50 }
+///     to { alpha: 1.0, size: 100 });
 ///
-///     let mut values = Style::default();
-///     timeline.update(&mut values, 0.25);
-///     assert_eq!(values, Style { alpha: 0.578125, size: 58 });
-///     timeline.update(&mut values, 0.5);
-///     assert_eq!(values, Style { alpha: 0.75, size: 75 });
-///     timeline.update(&mut values, 1.0);
-///     assert_eq!(values, Style { alpha: 1.0, size: 100 });
-///     timeline.update(&mut values, 1.25);
-///     assert_eq!(values, Style { alpha: 0.921875, size: 92 });
-///     timeline.update(&mut values, 1.5);
-///     assert_eq!(values, Style { alpha: 0.75, size: 75 });
-///     timeline.update(&mut values, 2.0);
-///     assert_eq!(values, Style { alpha: 0.5, size: 50 });
-/// }
+/// let mut values = Style::default();
+/// timeline.update(&mut values, 0.25);
+/// assert_eq!(values, Style { alpha: 0.578125, size: 58 });
+/// timeline.update(&mut values, 0.5);
+/// assert_eq!(values, Style { alpha: 0.75, size: 75 });
+/// timeline.update(&mut values, 1.0);
+/// assert_eq!(values, Style { alpha: 1.0, size: 100 });
+/// timeline.update(&mut values, 1.25);
+/// assert_eq!(values, Style { alpha: 0.921875, size: 92 });
+/// timeline.update(&mut values, 1.5);
+/// assert_eq!(values, Style { alpha: 0.75, size: 75 });
+/// timeline.update(&mut values, 2.0);
+/// assert_eq!(values, Style { alpha: 0.5, size: 50 });
 /// ```
 pub use mina_macros::timeline;

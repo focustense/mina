@@ -1,3 +1,8 @@
+//! Proc macro implementations for Mina.
+//!
+//! This is an internal helper crate that should not be used directly. All relevant macros are
+//! re-exported by Mina.
+
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
