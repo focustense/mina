@@ -2,6 +2,12 @@
 
 # Mina
 
+[![Documentation](https://docs.rs/mina/badge.svg)](https://docs.rs/mina/)
+[![Crates.io](https://img.shields.io/crates/v/mina.svg)](https://crates.io/crates/mina)
+[![License](https://img.shields.io/crates/l/mina.svg)](https://github.com/focustense/mina/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/crates/d/mina.svg)](https://crates.io/crates/mina)
+[![Test Status](https://img.shields.io/github/actions/workflow/status/focustense/mina/rust.yml?branch=main&event=push&label=test)](https://github.com/focustense/mina/actions)
+
 A simple, expressive, framework-independent animation library for Rust.
 
 ## Features
