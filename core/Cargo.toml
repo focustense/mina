@@ -2,6 +2,11 @@
 name = "mina_core"
 version = "0.1.0"
 edition = "2021"
+description = "Core types and traits for mina"
+license = "MIT"
+repository = "https://github.com/focustense/mina"
+readme = "README.md"
+keywords = ["mina"]
 
 [dependencies]
 dyn-clone = "1.0.11"
