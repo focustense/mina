@@ -607,7 +607,7 @@ mod tests {
         );
         assert_eq!(
             timeline.non_overridden_values_at(0.25),
-            TestValues::new(12, 0.0)
+            TestValues::new(13, 0.0)
         );
         assert_eq!(
             timeline.non_overridden_values_at(0.5),

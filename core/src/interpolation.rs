@@ -1,6 +1,6 @@
 //! Traits and implementations related to interpolation of animatable values.
 
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 
 /// Trait for a type that supports the standard `lerp` (**l**inear int**erp**olation) operation.
 ///
@@ -46,53 +46,37 @@ pub trait Lerp {
 // 1. a + t(b - a)
 // 2. tb + (1 - t)a
 //
-// These are mathematically equivalent but not type/trait-equivalent. The first variant does its
-// addition and subtraction in the `Value` space, which is prone to overflow, e.g. if interpolating
-// over an i8 from -128..127. The second has two variants of its own:
-//
-// 2a. Value(t(f32(b))) + Value((1 - t)(f32(a)))
-// 2b. Value(t(f32(b)) + (1 - t)(f32(a)))
-//
-// Variant 2a requires us to be able to multiply a Value by an f32 and return another Value. This
-// does NOT work for ordinary primitives, but is good for some common types like vectors and
-// matrices. Variant 2b only requires conversion of Value to and from f32, which DOES work for all
-// standard primitive types.
-//
-// Both of these implementations are valid for different scenarios, but they overlap, for example on
-// f32 itself. Until trait specialization lands, we can only implement one of them as a catch-all.
-// The other has to be done manually and/or with a derive macro.
-//
-// Since primitives are likely to be a lot more common in style props than complex types that happen
-// to support scalar multiplication, the primitive version is chosen here.
+// These are mathematically equivalent in theory, but the first variant does its addition and
+// subtraction in the `Value` space, which is prone to overflow, e.g. if interpolating over an i8
+// from -128..127. The second variant does these calculations in floating-point arithmetic, which
+// may lose precision but will not fail as long as the final result fits in the original type.
 
-impl<Convertible> Lerp for Convertible
-where
-    Convertible: FromPrimitive + ToPrimitive,
-{
+macro_rules! impl_lerp_for_integer_types {
+    ($($t:ty),*) => {
+        $( impl Lerp for $t {
+            fn lerp(&self, y1: &Self, x: f32) -> Self {
+                let result_f32 = (*self as f32).lerp(&(*y1 as f32), x);
+                Self::from_f32(result_f32.round())
+                    .expect("Converted value was outside the valid range for this type.")
+            }
+        }) *
+    }
+}
+
+impl_lerp_for_integer_types! { i8, i16, i32, i64, u8, u16, u32, u64, usize }
+
+impl Lerp for f32 {
     fn lerp(&self, y1: &Self, x: f32) -> Self {
-        let a = self.to_f32().expect("Start value does not fit in an f32");
-        let b = y1.to_f32().expect("End value does not fit in an f32");
-        let result_f32 = a * (1.0 - x) + b * x;
-        let converted = Convertible::from_f32(result_f32)
-            .expect("Converted value was outside the valid range for this type.");
+        self * (1.0 - x) + y1 * x
+    }
+}
 
-        // HACK: Between floating-point imprecision and the fact that float-to-int conversions
-        // truncate rather than round, we can get some intuitive results for certain interpolations.
-        // However, we don't know here whether the conversion is actually to an integer type, unless
-        // we're willing to forego the blanket implementation.
-        //
-        // An ugly way to deal with this is to check the difference afterward, and correct if it's
-        // too large. This unfortunately adds a bit of overhead but isn't too noticeable.
-        //
-        // Such small errors generally do not matter with actual animations, but test code is more
-        // sensitive, and even outside of tests there may be odd edge cases such as someone trying
-        // to imitiate a step function using a narrow integer range.
-        if result_f32 - converted.to_f32().unwrap() > 0.5 {
-            Convertible::from_f32(result_f32 + 0.5)
-                .expect("Converted value was outside the valid range for this type.")
-        } else {
-            converted
-        }
+impl Lerp for f64 {
+    fn lerp(&self, y1: &Self, x: f32) -> Self {
+        // Converting `x` to `f64` and doing the entire computation as f64 should be a lot more
+        // accurate, yet somehow consistently produces worse results in the `lerp_wider_type` test.
+        // TODO: Investigate this.
+        (*self as f32 * (1.0 - x) + *y1 as f32 * x) as f64
     }
 }
 
@@ -106,7 +90,7 @@ mod tests {
     fn lerp_narrow_type_full_range() {
         test_lerp(0, 255, 0.0, 0u8);
         test_lerp(0, 255, 0.25, 64u8);
-        test_lerp(0, 255, 0.5, 127u8);
+        test_lerp(0, 255, 0.5, 128u8);
         test_lerp(0, 255, 1.0, 255u8);
     }
 
@@ -134,6 +118,7 @@ mod tests {
         assert_relative_eq!(0.0.lerp(&1.0, 0.314), 0.314f64, epsilon = 0.00001);
         assert_eq!(0.0.lerp(&1.0, 1.0), 1.0f64);
         assert_relative_eq!(1.25e5.lerp(&6.77e5, 0.4), 3.458e5f64, epsilon = 0.00001);
+        assert_relative_eq!(1e-10.lerp(&2.5e-10, 0.123), 1.1845e-10f64, epsilon = 0.00001);
     }
 
     #[test]

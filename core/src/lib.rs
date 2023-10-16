@@ -5,6 +5,8 @@
 
 pub mod animator;
 pub mod easing;
+#[cfg(feature = "glam")]
+pub mod glam;
 pub mod interpolation;
 pub mod time_scale;
 pub mod timeline;
