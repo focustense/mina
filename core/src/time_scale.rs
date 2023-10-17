@@ -34,8 +34,8 @@ impl TimeScale {
     /// # Arguments
     ///
     /// * `duration` - Duration of an animation cycle, including the reversal time if `reverse` is
-    ///   `true`, but *not* including the `delay`. If `repeat` is [`Repeat::None`], then this total
-    ///   animation duration.
+    ///   `true`, but *not* including the `delay`. If `repeat` is [`Repeat::None`], then this is the
+    ///   total animation duration.
     /// * `delay` - Time to wait, in the same units as `duration`, before starting the animation.
     ///   This is a flat delay and only applies once to the entire timeline - i.e. it is _not_
     ///   repeated on every cycle.
@@ -50,6 +50,35 @@ impl TimeScale {
             repeat,
             reverse,
         }
+    }
+
+    /// Gets the duration of a single cycle, irrespective of [Repeat] setting.
+    pub fn get_cycle_duration(&self) -> f32 {
+        self.duration
+    }
+
+    /// Gets the delay before animation starts.
+    pub fn get_delay(&self) -> f32 {
+        self.delay
+    }
+
+    /// Gets the duration of the entire animation.
+    ///
+    /// # Returns
+    ///
+    /// The sum of the initial delay and all cycle repetitions. If the animation repeats infinitely,
+    /// returns `[f32::INFINITY]`.
+    pub fn get_duration(&self) -> f32 {
+        if self.repeat == Repeat::Infinite {
+            f32::INFINITY
+        } else {
+            self.delay + self.duration * (self.repeat.as_ordinal() + 1) as f32
+        }
+    }
+
+    /// Gets the repetitions configured for this timescale.
+    pub fn get_repeat(&self) -> Repeat {
+        self.repeat
     }
 
     /// Computes the timescale-relative position (e.g. normalized time) for some real time.
@@ -398,5 +427,45 @@ mod tests {
         let timescale = TimeScale::new(20.0, 0.0, Repeat::None, true);
 
         assert_eq!(timescale.get_position(25.0), TimeScalePosition::Ended(0.0));
+    }
+
+    #[test]
+    fn get_cycle_duration_ignores_delay_and_repetitions() {
+        let single_timescale = TimeScale::new(20.0, 3.0, Repeat::None, false);
+        let repeating_timescale = TimeScale::new(20.0, 3.0, Repeat::Infinite, false);
+
+        assert_eq!(single_timescale.get_cycle_duration(), 20.0);
+        assert_eq!(repeating_timescale.get_cycle_duration(), 20.0);
+    }
+
+    #[test]
+    fn get_delay_returns_delay() {
+        let single_timescale = TimeScale::new(20.0, 3.0, Repeat::None, false);
+        let repeating_timescale = TimeScale::new(20.0, 3.0, Repeat::Infinite, false);
+
+        assert_eq!(single_timescale.get_delay(), 3.0);
+        assert_eq!(repeating_timescale.get_delay(), 3.0);
+    }
+
+    #[test]
+    fn get_duration_includes_delay_and_repetitions() {
+        let single_timescale = TimeScale::new(20.0, 3.0, Repeat::None, false);
+        let repeating_timescale = TimeScale::new(20.0, 3.0, Repeat::Times(5), true);
+        let infinite_timescale = TimeScale::new(20.0, 3.0, Repeat::Infinite, false);
+
+        assert_eq!(single_timescale.get_duration(), 23.0);
+        assert_eq!(repeating_timescale.get_duration(), 123.0);
+        assert_eq!(infinite_timescale.get_duration(), f32::INFINITY);
+    }
+
+    #[test]
+    fn get_repeat_returns_delay() {
+        let single_timescale = TimeScale::new(20.0, 3.0, Repeat::None, true);
+        let repeating_timescale = TimeScale::new(20.0, 3.0, Repeat::Times(5), true);
+        let infinite_timescale = TimeScale::new(20.0, 3.0, Repeat::Infinite, true);
+
+        assert_eq!(single_timescale.get_repeat(), Repeat::None);
+        assert_eq!(repeating_timescale.get_repeat(), Repeat::Times(5));
+        assert_eq!(infinite_timescale.get_repeat(), Repeat::Infinite);
     }
 }

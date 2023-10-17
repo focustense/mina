@@ -1,5 +1,6 @@
 //! Creation and consumption of [`Timeline`] instances.
 
+use std::cmp::Ordering;
 use crate::easing::Easing;
 use crate::time_scale::{TimeScale, TimeScalePosition};
 use std::fmt::Debug;
@@ -9,6 +10,47 @@ pub trait Timeline {
     /// The target type that holds the set of animation properties. This is the original type from
     /// which the timeline was derived, _not_ the generated `AnimatorValues` type.
     type Target;
+
+    /// Gets the duration of a single cycle of the timeline. For repeating animations, this is the
+    /// time that will elapse between when the animation first begins (after [Self::delay] elapses)
+    /// and when the first repetition begins.
+    ///
+    /// This value has no inherent units, but if [TimelineConfiguration] was used to create this
+    /// instance, then it will be in seconds, since it is the same value originally passed to
+    /// [TimelineConfiguration::duration_seconds].
+    ///
+    /// Some timelines, such as [MergedTimeline], may not have a well-defined cycle duration and
+    /// will return [None] if there is no consistent value.
+    fn cycle_duration(&self) -> Option<f32>;
+
+    /// Gets the delay between timeline activation and animation start.
+    ///
+    /// For example, if the delay is `1.0`, then calls to [Self::update] with any `time <= 1.0` will
+    /// all reset to the first keyframe. Then, a subsequent call with `time == 1.1` will use the
+    /// keyframe at position `0.1`, and so on.
+    ///
+    /// This value has no inherent units, but if [TimelineConfiguration] was used to create this
+    /// instance, then it will be in seconds, since it is the same value originally passed to
+    /// [TimelineConfiguration::delay_seconds].
+    ///
+    /// If the timeline is composed of multiple animations with distinct delays, this is the minimum
+    /// of all delays, i.e. it is the delay before _any_ animation starts.
+    fn delay(&self) -> f32;
+
+    /// Gets the duration of the entire timeline, including all repetitions and any initial
+    /// [Self::delay].
+    ///
+    /// This value is in the same units as [Self::cycle_duration] and may be [f32::INFINITY] if the
+    /// [Self::repeat] setting is [Repeat::Infinite].
+    ///
+    /// If multiple animations are involved (e.g. [MergedTimeline]), then this is the maximum value
+    /// of all animations.
+    fn duration(&self) -> f32;
+
+    /// Gets the repetitions of this timeline.
+    ///
+    /// If the timeline includes multiple animations with different
+    fn repeat(&self) -> Repeat;
 
     /// Changes this timeline to start with a different set of values from the defaults that it was
     /// originally configured with.
@@ -322,6 +364,29 @@ impl<T: Timeline> From<T> for MergedTimeline<T> {
 impl<T: Timeline> Timeline for MergedTimeline<T> {
     type Target = T::Target;
 
+    fn cycle_duration(&self) -> Option<f32> {
+        self.timelines.iter()
+            .map(|t| t.cycle_duration())
+            .reduce(|d1, d2| if d1 == d2 { d1 } else { None })
+            .flatten()
+    }
+
+    fn delay(&self) -> f32 {
+        self.timelines.iter().map(|t| t.delay())
+            .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
+            .unwrap_or(0.)
+    }
+
+    fn duration(&self) -> f32 {
+        self.timelines.iter().map(|t| t.duration())
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
+            .unwrap_or(0.)
+    }
+
+    fn repeat(&self) -> Repeat {
+        self.timelines.iter().map(|t| t.repeat()).max().unwrap_or(Repeat::None)
+    }
+
     fn start_with(&mut self, values: &Self::Target) {
         for timeline in self.timelines.iter_mut() {
             timeline.start_with(values);
@@ -336,7 +401,7 @@ impl<T: Timeline> Timeline for MergedTimeline<T> {
 }
 
 /// Describes the looping behavior of an animation timeline.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum Repeat {
     /// Animation does not repeat; it plays once and then ends.
     #[default]
@@ -347,6 +412,28 @@ pub enum Repeat {
     /// Animation repeats infinitely and never ends, looping or reversing back to the beginning each
     /// time it repeats.
     Infinite,
+}
+
+impl PartialOrd<Self> for Repeat {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Repeat {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_ordinal().cmp(&other.as_ordinal())
+    }
+}
+
+impl Repeat {
+    pub(super) fn as_ordinal(&self) -> u32 {
+        match self {
+            Repeat::None => 0,
+            Repeat::Times(value) => *value,
+            Repeat::Infinite => u32::MAX,
+        }
+    }
 }
 
 /// Helper function typically used by [`Timeline`] implementations at the beginning of their
@@ -391,15 +478,24 @@ mod tests {
     }
 
     // Setting up a timeline without proc macros requires a lot of boilerplate, so for the purposes
-    // of testing merged timelines, we instead  use fake timelines here. The stub is only capable of
+    // of testing merged timelines, we instead use fake timelines here. The stub is only capable of
     // producing exact matches, i.e. does not interpolate between times.
+    #[derive(Clone)]
     struct StubTimeline {
+        cycle_duration: Option<f32>,
+        delay: f32,
+        duration: f32,
+        repeat: Repeat,
         frames: HashMap<OrderedFloat<f32>, StubFrame>,
     }
 
     impl StubTimeline {
         fn new() -> Self {
             Self {
+                cycle_duration: None,
+                delay: 0.,
+                duration: 0.,
+                repeat: Repeat::None,
                 frames: HashMap::new(),
             }
         }
@@ -415,10 +511,46 @@ mod tests {
                 .insert(OrderedFloat(time), StubFrame { foo, bar, baz });
             self
         }
+
+        fn set_cycle_duration(mut self, duration: f32) -> Self {
+            self.cycle_duration = Some(duration);
+            self
+        }
+
+        fn set_delay(mut self, delay: f32) -> Self {
+            self.delay = delay;
+            self
+        }
+
+        fn set_duration(mut self, duration: f32) -> Self {
+            self.duration = duration;
+            self
+        }
+
+        fn set_repeat(mut self, repeat: Repeat) -> Self {
+            self.repeat = repeat;
+            self
+        }
     }
 
     impl Timeline for StubTimeline {
         type Target = TestValues;
+
+        fn cycle_duration(&self) -> Option<f32> {
+            self.cycle_duration
+        }
+
+        fn delay(&self) -> f32 {
+            self.delay
+        }
+
+        fn duration(&self) -> f32 {
+            self.duration
+        }
+
+        fn repeat(&self) -> Repeat {
+            self.repeat
+        }
 
         fn start_with(&mut self, values: &Self::Target) {
             if let Some(first_frame) = self.frames.get_mut(&OrderedFloat(0.0)) {
@@ -443,52 +575,144 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
     struct StubFrame {
         foo: Option<u8>,
         bar: Option<u32>,
         baz: Option<f32>,
     }
 
-    #[test]
-    fn merged_timeline_delegates_to_component_timelines() {
-        let timeline1 = StubTimeline::new()
-            .add_frame(0.1, Some(10), Some(555), Some(0.12))
-            .add_frame(0.2, Some(20), None, None)
-            .add_frame(0.3, Some(30), Some(777), None);
-        let timeline2 = StubTimeline::new()
-            .add_frame(0.1, None, None, Some(1.5))
-            .add_frame(0.2, None, None, Some(2.5))
-            .add_frame(0.3, None, None, Some(6.8));
-        let merged_timeline = MergedTimeline::of([timeline1, timeline2]);
+    mod merged_timeline {
+        use super::*;
 
-        let mut values = <[TestValues; 3]>::default();
-        merged_timeline.update(&mut values[0], 0.1);
-        merged_timeline.update(&mut values[1], 0.2);
-        merged_timeline.update(&mut values[2], 0.3);
+        #[test]
+        fn delegates_to_component_timelines() {
+            let timeline1 = StubTimeline::new()
+                .add_frame(0.1, Some(10), Some(555), Some(0.12))
+                .add_frame(0.2, Some(20), None, None)
+                .add_frame(0.3, Some(30), Some(777), None);
+            let timeline2 = StubTimeline::new()
+                .add_frame(0.1, None, None, Some(1.5))
+                .add_frame(0.2, None, None, Some(2.5))
+                .add_frame(0.3, None, None, Some(6.8));
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2]);
 
-        assert_eq!(
-            values[0],
-            TestValues {
-                foo: 10,
-                bar: 555,
-                baz: 1.5
-            }
-        );
-        assert_eq!(
-            values[1],
-            TestValues {
-                foo: 20,
-                bar: 0,
-                baz: 2.5
-            }
-        );
-        assert_eq!(
-            values[2],
-            TestValues {
-                foo: 30,
-                bar: 777,
-                baz: 6.8
-            }
-        );
+            let mut values = <[TestValues; 3]>::default();
+            merged_timeline.update(&mut values[0], 0.1);
+            merged_timeline.update(&mut values[1], 0.2);
+            merged_timeline.update(&mut values[2], 0.3);
+
+            assert_eq!(
+                values[0],
+                TestValues {
+                    foo: 10,
+                    bar: 555,
+                    baz: 1.5
+                }
+            );
+            assert_eq!(
+                values[1],
+                TestValues {
+                    foo: 20,
+                    bar: 0,
+                    baz: 2.5
+                }
+            );
+            assert_eq!(
+                values[2],
+                TestValues {
+                    foo: 30,
+                    bar: 777,
+                    baz: 6.8
+                }
+            );
+        }
+
+        #[test]
+        fn when_all_cycle_durations_same_then_returns_cycle_duration() {
+            let timeline1 = StubTimeline::new().set_cycle_duration(5.5);
+            let timeline2 = StubTimeline::new().set_cycle_duration(5.5);
+            let timeline3 = StubTimeline::new().set_cycle_duration(5.5);
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline.cycle_duration(), Some(5.5));
+        }
+
+        #[test]
+        fn when_any_cycle_duration_different_returns_undefined_cycle_duration() {
+            let timeline1 = StubTimeline::new().set_cycle_duration(5.5);
+            let timeline2 = StubTimeline::new().set_cycle_duration(4.5);
+            let timeline3 = StubTimeline::new().set_cycle_duration(5.5);
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline.cycle_duration(), None);
+        }
+
+        #[test]
+        fn when_any_cycle_duration_undefined_returns_undefined_cycle_duration() {
+            let timeline1 = StubTimeline::new().set_cycle_duration(5.5);
+            let timeline2 = StubTimeline::new().set_cycle_duration(5.5);
+            let timeline3 = StubTimeline::new();
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline.cycle_duration(), None);
+        }
+
+        #[test]
+        fn returns_minimum_delay() {
+            let timeline1 = StubTimeline::new().set_delay(2.0);
+            let timeline2 = StubTimeline::new().set_delay(5.0);
+            let timeline3 = StubTimeline::new().set_delay(0.1);
+
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline.delay(), 0.1);
+        }
+
+        #[test]
+        fn when_all_durations_fixed_returns_max_duration() {
+            let timeline1 = StubTimeline::new().set_duration(10.);
+            let timeline2 = StubTimeline::new().set_duration(5.);
+            let timeline3 = StubTimeline::new().set_duration(15.);
+
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline.duration(), 15.);
+        }
+
+        #[test]
+        fn when_any_duration_infinite_returns_infinite_duration() {
+            let timeline1 = StubTimeline::new().set_duration(f32::INFINITY);
+            let timeline2 = StubTimeline::new().set_duration(5.);
+            let timeline3 = StubTimeline::new().set_duration(15.);
+
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline.duration(), f32::INFINITY);
+        }
+
+        #[test]
+        fn when_no_timelines_repeat_returns_no_repeat() {
+            let timeline1 = StubTimeline::new();
+            let timeline2 = StubTimeline::new();
+            let timeline3 = StubTimeline::new();
+
+            let merged_timeline = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline.repeat(), Repeat::None);
+        }
+
+        #[test]
+        fn when_some_timelines_repeat_returns_max_repeat() {
+            let timeline1 = StubTimeline::new();
+            let timeline2 = StubTimeline::new().set_repeat(Repeat::Times(1));
+            let timeline3 = StubTimeline::new().set_repeat(Repeat::Infinite);
+
+            let merged_timeline1 = MergedTimeline::of([timeline1.clone(), timeline2.clone()]);
+            let merged_timeline2 = MergedTimeline::of([timeline1, timeline2, timeline3]);
+
+            assert_eq!(merged_timeline1.repeat(), Repeat::Times(1));
+            assert_eq!(merged_timeline2.repeat(), Repeat::Infinite);
+        }
     }
 }

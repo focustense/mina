@@ -252,6 +252,22 @@ fn timeline_struct(
         impl ::mina::Timeline for #name {
             type Target = #target_name;
 
+            fn cycle_duration(&self) -> Option<f32> {
+                Some(self.timescale.get_cycle_duration())
+            }
+
+            fn delay(&self) -> f32 {
+                self.timescale.get_delay()
+            }
+
+            fn duration(&self) -> f32 {
+                self.timescale.get_duration()
+            }
+
+            fn repeat(&self) -> Repeat {
+                self.timescale.get_repeat()
+            }
+
             fn start_with(&mut self, values: &Self::Target) {
                 #(#start_value_assignments)*
             }

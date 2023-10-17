@@ -73,6 +73,15 @@ pub trait StateAnimator {
     /// position on the timeline for that state.
     fn current_values(&self) -> &Self::Values;
 
+    /// Checks whether the animation for the [Self::current_state] has ended.
+    ///
+    /// If any component of the animation repeats infinitely, then this will never be `true`.
+    /// Otherwise, it will return `true` when all constituent animations reach the end of their
+    /// timelines, i.e. after all repetitions have finished.
+    ///
+    /// Also returns `true` if there is no animation associated with the current state.
+    fn is_ended(&self) -> bool;
+
     /// Transitions to a new state.
     ///
     /// This has no immediate effect on the [`current_values`](Self::current_values), but will start
@@ -168,6 +177,13 @@ where
 
     fn current_values(&self) -> &Self::Values {
         &self.current_values
+    }
+
+    fn is_ended(&self) -> bool {
+        let Some(current_timeline) = self.timelines.get(&self.current_state) else {
+            return true;
+        };
+        self.state_duration.as_secs_f32() >= current_timeline.duration()
     }
 
     fn set_state(&mut self, state: &State) {

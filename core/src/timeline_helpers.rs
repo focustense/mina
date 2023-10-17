@@ -272,7 +272,7 @@ fn interpolate_value<Value: Clone + Lerp>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timeline::Timeline;
+    use crate::timeline::{Repeat, Timeline};
 
     #[derive(Clone, Debug, Default, PartialEq)]
     struct TestValues {
@@ -389,6 +389,22 @@ mod tests {
 
     impl Timeline for TestTimeline {
         type Target = TestValues;
+
+        fn cycle_duration(&self) -> Option<f32> {
+            unimplemented!()
+        }
+
+        fn delay(&self) -> f32 {
+            unimplemented!()
+        }
+
+        fn duration(&self) -> f32 {
+            unimplemented!()
+        }
+
+        fn repeat(&self) -> Repeat {
+            unimplemented!()
+        }
 
         fn start_with(&mut self, values: &Self::Target) {
             self.foo.override_start_value(values.foo);

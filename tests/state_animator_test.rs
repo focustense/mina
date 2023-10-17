@@ -203,6 +203,53 @@ mod using_builder {
             Style { x: 80, y: 20 },
         ]);
     }
+
+    #[test]
+    fn when_state_is_animated_and_animation_still_running_then_is_not_ended() {
+        let mut animator = StateAnimatorBuilder::new()
+            .from_state(Interaction::A)
+            .on(Interaction::A, Style::timeline()
+                .duration_seconds(5.)
+                .delay_seconds(3.)
+                .repeat(Repeat::Times(2))
+                .keyframe(Style::keyframe(0.0).x(40).y(10))
+                .keyframe(Style::keyframe(1.0).x(80).y(20)))
+            .build();
+        animator.set_state(&Interaction::A);
+        animator.advance(17.);
+
+        assert_eq!(animator.is_ended(), false);
+    }
+
+    #[test]
+    fn when_state_is_animated_and_animation_reached_duration_then_is_ended() {
+        let mut animator = StateAnimatorBuilder::new()
+            .from_state(Interaction::A)
+            .on(Interaction::A, Style::timeline()
+                .duration_seconds(5.)
+                .delay_seconds(3.)
+                .repeat(Repeat::Times(2))
+                .keyframe(Style::keyframe(0.0).x(40).y(10))
+                .keyframe(Style::keyframe(1.0).x(80).y(20)))
+            .build();
+        animator.set_state(&Interaction::A);
+        animator.advance(23.);
+
+        assert_eq!(animator.is_ended(), true);
+    }
+
+    #[test]
+    fn when_state_is_not_animated_then_is_ended() {
+        let mut animator = StateAnimatorBuilder::new()
+            .from_state(Interaction::A)
+            .on(Interaction::A, Style::timeline()
+                .duration_seconds(5.)
+                .keyframe(Style::keyframe(1.0).x(80).y(20)))
+            .build();
+        animator.set_state(&Interaction::B);
+
+        assert_eq!(animator.is_ended(), true);
+    }
 }
 
 mod using_macro {
