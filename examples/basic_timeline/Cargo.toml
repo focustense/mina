@@ -1,0 +1,11 @@
+[package]
+name = "example_basic_timeline"
+version = "0.1.0"
+edition = "2021"
+
+# https://github.com/rust-lang/cargo/issues/7880
+[workspace]
+
+[dependencies]
+mina = { path = "../.." }
+nannou = "0.18.1"

@@ -15,6 +15,7 @@ exclude = ["/.cargo", "/.github", "/art", "/doc", "*.orig"]
 [workspace]
 members = [".", "core", "macros"]
 default-members = [".", "core", "macros"]
+resolver = "2"
 
 [dependencies]
 mina_core = { path = "core", version = "0.1.0" }
@@ -22,7 +23,6 @@ mina_macros = { path = "macros", version = "0.1.0" }
 
 [dev-dependencies]
 enum-map = "2.5.0"
-nannou = "0.18.1"
 
 [features]
 glam = ["mina_core/glam"]

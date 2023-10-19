@@ -54,7 +54,7 @@ let timeline = timeline!(Shape 5s infinite Easing::OutCubic
     to { x: -150.0, y: 60.0 });
 ```
 
-See the [full example](examples/basic_timeline.rs) (uses [nannou](https://nannou.cc/)).
+See the [full example](examples/basic_timeline) (uses [nannou](https://nannou.cc/)).
 
 ## Animator Example
 
@@ -118,7 +118,7 @@ The above is taken from the [widget example](examples/iced_widget/main.rs) using
 
 ## More Examples
 
-### [Progress Indicator](examples/delays.rs)
+### [Progress Indicator](examples/delays)
 
 ![Progress Indicator](doc/progress_example.gif)
 
