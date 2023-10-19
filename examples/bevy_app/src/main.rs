@@ -2,6 +2,7 @@ use crate::arrow_button::{ArrowButtonBundle, ArrowButtonPlugin, ArrowDirection};
 use crate::carousel::{Carousel, CarouselPlugin};
 use crate::characters::{Character, CharacterPlugin, CharacterSprites};
 use bevy::{prelude::*, time::common_conditions::on_timer, winit::WinitSettings};
+use bevy_mina::prelude::*;
 use bevy_mod_picking::prelude::*;
 use bevy_vector_shapes::prelude::*;
 use enum_map::enum_map;
@@ -9,29 +10,44 @@ use mina::prelude::*;
 use std::cmp::Ordering;
 use std::time::Duration;
 
-mod animator_plugin;
 mod arrow_button;
 mod carousel;
 mod characters;
-mod registry;
+mod interaction;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(DefaultPickingPlugins)
-        .add_plugin(Shape2dPlugin::default())
-        .add_plugin(ArrowButtonPlugin)
-        .add_plugin(CharacterPlugin)
-        .add_plugin(CarouselPlugin::new().add_timeline::<CarouselItemTimeline>())
+        .add_plugins((
+            DefaultPlugins,
+            DefaultPickingPlugins,
+            Shape2dPlugin::default(),
+            ArrowButtonPlugin,
+            CharacterPlugin,
+            CarouselPlugin::<CarouselItemTimeline>::new(),
+            AnimationPlugin::<Transform>::new(),
+        ))
         .insert_resource(WinitSettings::game())
         .insert_resource(Msaa::Sample4)
         .insert_resource(ClearColor(Color::rgb(0.1, 0.1, 0.1)))
         .add_event::<NextCharacter>()
         .add_event::<PreviousCharacter>()
-        .add_startup_system(setup)
-        .add_system(character_animation.run_if(on_timer(Duration::from_millis(80))))
-        .add_systems((character_carousel, character_navigate))
+        .add_systems(Startup, setup)
+        .add_systems(
+            Update,
+            (
+                (character_carousel, character_navigate),
+                character_animation.run_if(on_timer(Duration::from_millis(80))),
+            ),
+        )
         .run();
+}
+
+#[derive(Animate)]
+#[animate(remote = "Transform")]
+struct TransformProxy {
+    translation: Vec3,
+    rotation: Quat,
+    scale: Vec3,
 }
 
 #[derive(Animate, Clone, Component, Debug, Default)]
@@ -41,16 +57,18 @@ struct CarouselItem {
     x: f32,
 }
 
+#[derive(Event)]
 struct NextCharacter;
-impl From<ListenedEvent<Click>> for NextCharacter {
-    fn from(_: ListenedEvent<Click>) -> Self {
+impl From<ListenerInput<Pointer<Click>>> for NextCharacter {
+    fn from(_: ListenerInput<Pointer<Click>>) -> Self {
         NextCharacter
     }
 }
 
+#[derive(Event)]
 struct PreviousCharacter;
-impl From<ListenedEvent<Click>> for PreviousCharacter {
-    fn from(_: ListenedEvent<Click>) -> Self {
+impl From<ListenerInput<Pointer<Click>>> for PreviousCharacter {
+    fn from(_: ListenerInput<Pointer<Click>>) -> Self {
         PreviousCharacter
     }
 }
@@ -66,11 +84,11 @@ fn setup(
 
     commands.spawn((
         ArrowButtonBundle::new(ArrowDirection::Left, -300.0, 25.0),
-        OnPointer::<Click>::send_event::<PreviousCharacter>(),
+        On::<Pointer<Click>>::send_event::<PreviousCharacter>(),
     ));
     commands.spawn((
         ArrowButtonBundle::new(ArrowDirection::Right, 300.0, 25.0),
-        OnPointer::<Click>::send_event::<NextCharacter>(),
+        On::<Pointer<Click>>::send_event::<NextCharacter>(),
     ));
 
     let mut spawn_character = |character| {
@@ -146,7 +164,12 @@ fn create_carousel(width: f32, move_duration_seconds: f32) -> Carousel<CarouselI
                 .easing(Easing::OutQuint),
         )
         .keyframe(CarouselItem::keyframe(0.95).alpha(0.0))
-        .keyframe(CarouselItem::keyframe(1.0).x(width / 2.0).scale(0.75).alpha(0.0))
+        .keyframe(
+            CarouselItem::keyframe(1.0)
+                .x(width / 2.0)
+                .scale(0.75)
+                .alpha(0.0),
+        )
         .build();
     Carousel::new(timeline, move_duration_seconds)
 }
@@ -157,7 +180,7 @@ fn spawn_title(commands: &mut Commands, asset_server: Res<AssetServer>) {
             style: Style {
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                size: Size::width(Val::Percent(100.0)),
+                width: Val::Percent(100.0),
                 ..default()
             },
             ..default()
@@ -173,14 +196,29 @@ fn spawn_title(commands: &mut Commands, asset_server: Res<AssetServer>) {
                     },
                 )
                 .with_style(Style {
+                    bottom: Val::Px(100.0),
                     position_type: PositionType::Relative,
-                    position: UiRect {
-                        bottom: Val::Px(100.0),
-                        ..default()
-                    },
                     ..default()
                 })
                 .with_text_alignment(TextAlignment::Center),
             );
         });
+
+    let crystal = asset_server.load("crystal.png");
+    commands.spawn((
+        SpriteBundle {
+            texture: crystal,
+            transform: Transform {
+                translation: Vec3::new(-240., 110., 0.),
+                scale: Vec3::splat(0.1),
+                ..default()
+            },
+            ..default()
+        },
+        Animator::<Transform>::with_timeline(timeline! {
+            TransformProxy 2s reverse infinite Easing::OutBack
+                from { scale: Vec3::splat(0.1) }
+                to { scale: Vec3::splat(0.15) }
+        }),
+    ));
 }

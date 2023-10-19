@@ -7,15 +7,16 @@ edition = "2021"
 [workspace]
 
 [dependencies]
-bevy_mod_picking = { version = "0.13.0", default-features = false }
-bevy_vector_shapes = "0.4.5"
+bevy_mina = { path = "../../bevy" }
+bevy_mod_picking = { version = "0.15.0", default-features = false }
+bevy_vector_shapes = "0.5.2"
 enum-map = "2.5.0"
 mina = { path = "../.." }
 
 [dependencies.bevy]
-version = "0.10.1"
+version = "0.11.3"
 default_features = false
-features = ["bevy_asset", "bevy_core_pipeline", "bevy_render", "bevy_sprite", "bevy_text", "bevy_winit", "png", "dynamic_linking"]
+features = ["bevy_asset", "bevy_core_pipeline", "bevy_render", "bevy_sprite", "bevy_text", "bevy_ui", "bevy_winit", "png", "dynamic_linking"]
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

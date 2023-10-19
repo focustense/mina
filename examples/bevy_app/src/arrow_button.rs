@@ -1,5 +1,6 @@
-use crate::animator_plugin::{AnimatorBundle, AnimatorPlugin, Interaction, InteractionAnimator};
+use crate::interaction::{Interaction, PointerInteractionBundle};
 use bevy::{prelude::*, window::PrimaryWindow};
+use bevy_mina::prelude::*;
 use bevy_mod_picking::{
     backend::{HitData, PointerHits},
     picking_core::PickSet,
@@ -27,19 +28,25 @@ pub struct ArrowButtonPlugin;
 
 impl Plugin for ArrowButtonPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugin(AnimatorPlugin::new().add_timeline::<ArrowButtonTimeline>())
-            .add_system(arrow_button_picking.in_set(PickSet::Backend))
-            .add_system(draw_arrows);
+        app.add_plugins(AnimationPlugin::<ArrowButton>::new().add_selection_key::<Interaction>())
+            .add_systems(
+                Update,
+                (arrow_button_picking.in_set(PickSet::Backend), draw_arrows),
+            );
     }
 }
 
-#[derive(Animate, Clone)]
+#[derive(Animate, Clone, Component)]
 pub struct ArrowButton {
-    #[animate] background_alpha: f32,
-    #[animate] background_lightness: f32,
+    #[animate]
+    background_alpha: f32,
+    #[animate]
+    background_lightness: f32,
     direction: ArrowDirection,
-    #[animate] focus_ring_alpha: f32,
-    #[animate] focus_ring_rotation: f32,
+    #[animate]
+    focus_ring_alpha: f32,
+    #[animate]
+    focus_ring_rotation: f32,
     size: f32,
 }
 
@@ -79,54 +86,62 @@ pub enum ArrowDirection {
 
 #[derive(Bundle)]
 pub struct ArrowButtonBundle {
-    animator: AnimatorBundle<ArrowButtonTimeline>,
+    animator: Animator<ArrowButton>,
+    animation_selector: AnimationSelector<Interaction, ArrowButton>,
+    button: ArrowButton,
+    pointer_interaction: PointerInteractionBundle,
     spatial: SpatialBundle,
 }
 
 impl ArrowButtonBundle {
     pub fn new(direction: ArrowDirection, x: f32, size: f32) -> Self {
-        let button = ArrowButton::new(direction, size);
         Self {
             spatial: SpatialBundle::from_transform(Transform::from_translation(Vec3::new(
                 x, 0.0, 0.0,
             ))),
-            animator: AnimatorBundle::new(animator!(ArrowButton {
-                default(Interaction::None, button),
-                Interaction::None => [
-                    0.1s Easing::OutCubic to { background_lightness: 0.0 },
-                    0.5s Easing::OutQuad to { background_alpha: 0.0, focus_ring_alpha: 0.0 },
-                    0.1s after 0.5s to { focus_ring_rotation: 0.0 }
-                ],
-                Interaction::Over => [
-                    0.1s Easing::OutCubic to { background_lightness: 0.0 },
-                    1s Easing::In to { background_alpha: 1.0 },
-                    3s infinite Easing::In
-                        from { focus_ring_alpha: 0.05 }
-                        40% { focus_ring_alpha: 1.0 }
-                        70% { focus_ring_alpha: 1.0 }
-                        to { focus_ring_alpha: 0.05 },
-                    10s infinite 1% { focus_ring_rotation: 0.0 } to { focus_ring_rotation: PI },
-                ],
-                Interaction::Down => [
-                    0.5s Easing::OutCubic to {
-                        background_alpha: 0.8,
-                        focus_ring_alpha: 1.0,
-                        focus_ring_rotation: 0.0
-                    },
-                    2s Easing::InOutCubic to { background_lightness: 0.15 } reverse infinite,
-                ]
-            })),
+            animator: Animator::new(),
+            animation_selector: AnimationSelectorBuilder::new()
+                .add(
+                    Interaction::None,
+                    timeline!(ArrowButton [
+                        0.1s Easing::OutCubic to { background_lightness: 0.0 },
+                        0.5s Easing::OutQuad to { background_alpha: 0.0, focus_ring_alpha: 0.0 },
+                        0.1s after 0.5s to { focus_ring_rotation: 0.0 }
+                    ]),
+                )
+                .add(
+                    Interaction::Over,
+                    timeline!(ArrowButton [
+                        0.1s Easing::OutCubic to { background_lightness: 0.0 },
+                        1s Easing::In to { background_alpha: 1.0 },
+                        3s infinite Easing::In
+                            from { focus_ring_alpha: 0.05 }
+                            40% { focus_ring_alpha: 1.0 }
+                            70% { focus_ring_alpha: 1.0 }
+                            to { focus_ring_alpha: 0.05 },
+                        10s infinite 1% { focus_ring_rotation: 0.0 } to { focus_ring_rotation: PI },
+                    ]),
+                )
+                .add(
+                    Interaction::Down,
+                    timeline!(ArrowButton [
+                        0.5s Easing::OutCubic to {
+                            background_alpha: 0.8,
+                            focus_ring_alpha: 1.0,
+                            focus_ring_rotation: 0.0
+                        },
+                        2s Easing::InOutCubic to { background_lightness: 0.15 } reverse infinite,
+                    ]),
+                )
+                .build(),
+            button: ArrowButton::new(direction, size),
+            pointer_interaction: PointerInteractionBundle::new::<ArrowButton>(),
         }
     }
 }
 
 fn arrow_button_picking(
-    arrow_buttons: Query<(
-        Entity,
-        &InteractionAnimator<ArrowButtonTimeline>,
-        &GlobalTransform,
-        &ComputedVisibility,
-    )>,
+    arrow_buttons: Query<(Entity, &ArrowButton, &GlobalTransform, &ComputedVisibility)>,
     pointers: Query<(&PointerId, &PointerLocation)>,
     cameras: Query<(Entity, &Camera, &GlobalTransform)>,
     primary_window: Query<Entity, With<PrimaryWindow>>,
@@ -146,16 +161,18 @@ fn arrow_button_picking(
                     == location.target
             })
             .unwrap_or_else(|| panic!("No camera found associated with pointer {:?}", pointer));
-        let Some(cursor_pos_world) = camera.viewport_to_world_2d(cam_transform, location.position) else { continue; };
+        let Some(cursor_pos_world) = camera.viewport_to_world_2d(cam_transform, location.position)
+        else {
+            continue;
+        };
         let picks = arrow_buttons
             .iter()
-            .filter_map(|(entity, animator, transform, visibility)| {
+            .filter_map(|(entity, button, transform, visibility)| {
                 if !visibility.is_visible() {
                     return None;
                 }
                 let position = transform.translation().truncate();
                 let distance = position.distance(cursor_pos_world);
-                let button = animator.current_values();
                 if distance <= button.selection_radius() {
                     Some((
                         entity,
@@ -173,21 +190,16 @@ fn arrow_button_picking(
         output.send(PointerHits {
             pointer: *pointer,
             picks: picks.collect(),
-            order: 0,
+            order: 0.,
         });
     }
 }
 
-fn draw_arrows(
-    arrow_buttons: Query<(&InteractionAnimator<ArrowButtonTimeline>, &Transform)>,
-    mut painter: ShapePainter,
-) {
+fn draw_arrows(arrow_buttons: Query<(&ArrowButton, &Transform)>, mut painter: ShapePainter) {
     const DASH_SEGMENTS: u32 = 16;
 
     let dash_angle = PI / DASH_SEGMENTS as f32;
-    for (animator, transform) in &arrow_buttons {
-        let arrow_button = animator.current_values();
-
+    for (arrow_button, transform) in &arrow_buttons {
         painter.transform = *transform;
         painter.color = lighten(
             Color::rgba(0.05, 0.15, 0.2, arrow_button.background_alpha),
@@ -224,8 +236,15 @@ fn draw_arrows(
 }
 
 fn lighten(color: Color, added_lightness: f32) -> Color {
-    let Color::Lcha { lightness, chroma, hue, alpha } =
-        color.as_lcha() else { return color; };
+    let Color::Lcha {
+        lightness,
+        chroma,
+        hue,
+        alpha,
+    } = color.as_lcha()
+    else {
+        return color;
+    };
     Color::Lcha {
         lightness: lightness + added_lightness,
         chroma,

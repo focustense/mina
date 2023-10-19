@@ -1,0 +1,20 @@
+[package]
+name = "bevy_mina"
+version = "0.1.0"
+authors = ["focustense <focustense@protonmail.com>"]
+edition = "2021"
+description = "Bevy plugin for Mina animations"
+license = "MIT"
+repository = "https://github.com/focustense/mina"
+documentation = "https://docs.rs/mina"
+readme = "README.md"
+keywords = ["animation", "bevy", "gamedev", "mina", "tween", "tweening"]
+categories = ["game-development"]
+
+[dependencies]
+bevy = { version = "0.11.3", default-features = false }
+dyn-clone = "1.0.14"
+mina = { path = "..", version = "0.1.1", features = ["glam"] }
+
+[dev-dependencies]
+bevy = { version = "0.11.3", default-features = false, features = ["bevy_asset", "bevy_sprite"] }

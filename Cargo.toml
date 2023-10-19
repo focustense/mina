@@ -13,8 +13,8 @@ categories = ["gui"]
 exclude = ["/.cargo", "/.github", "/art", "/doc", "*.orig"]
 
 [workspace]
-members = [".", "core", "macros"]
-default-members = [".", "core", "macros"]
+members = [".", "bevy", "core", "macros"]
+default-members = [".", "bevy", "core", "macros"]
 resolver = "2"
 
 [dependencies]

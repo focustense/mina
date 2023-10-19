@@ -1,4 +1,4 @@
-use crate::registry::Registry;
+use std::marker::PhantomData;
 use bevy::prelude::*;
 use mina::prelude::*;
 
@@ -33,32 +33,23 @@ use mina::prelude::*;
 /// Most uses of the animation system are _not_ this complicated. This is intended as a demo of the
 /// flexibility: instead of letting the animators run everything, we can use some of the lower-level
 /// types to create more unusual effects.
-pub struct CarouselPlugin {
-    registry: Registry,
+pub struct CarouselPlugin<T: Timeline> {
+    phantom: PhantomData<T>,
 }
 
-impl CarouselPlugin {
+impl<T: Timeline> CarouselPlugin<T> {
     pub fn new() -> Self {
-        Self {
-            registry: Registry::new(),
-        }
-    }
-
-    pub fn add_timeline<T>(mut self) -> Self
-    where
-        T: Timeline + Send + Sync + 'static,
-        T::Target: Clone + Component + Send + Sync,
-    {
-        self.registry.add(|app| {
-            app.add_system(update_carousels::<T>);
-        });
-        self
+        Self { phantom: PhantomData }
     }
 }
 
-impl Plugin for CarouselPlugin {
+impl<T> Plugin for CarouselPlugin<T>
+where
+    T: Timeline + Send + Sync + 'static,
+    T::Target: Component
+{
     fn build(&self, app: &mut App) {
-        self.registry.apply(app);
+        app.add_systems(Update, update_carousels::<T>);
     }
 }
 
