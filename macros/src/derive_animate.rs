@@ -1,9 +1,10 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
+use syn::parse::{Parse, ParseStream};
 use syn::{
-    parse_macro_input, spanned::Spanned, Data, DeriveInput, Error, Field, Fields, Meta, Path,
-    Result, Visibility,
+    parse2, parse_macro_input, parse_str, spanned::Spanned, Data, DeriveInput, Error, Field,
+    Fields, Lit, Meta, Path, Result, Token, Visibility,
 };
 
 pub fn animate_impl(input: TokenStream) -> TokenStream {
@@ -18,17 +19,51 @@ fn expand_animate(input: DeriveInput) -> Result<TokenStream2> {
         ident: name,
         data,
         generics: _generics, // Not supported yet
-        attrs: _attrs,
+        attrs,
         vis,
     } = input;
     let Data::Struct(struct_data) = data else {
-        return Err(Error::new(Span::call_site(), "derive(Animate) requires a struct type."));
+        return Err(Error::new(
+            Span::call_site(),
+            "derive(Animate) requires a struct type.",
+        ));
     };
     let Fields::Named(fields) = struct_data.fields else {
         return Err(Error::new(
             struct_data.fields.span(),
-            "derive(Animate) requires a struct with named fields."));
+            "derive(Animate) requires a struct with named fields.",
+        ));
     };
+
+    let mut remote_path = Path::from(name.clone());
+    for attr in &attrs {
+        let Meta::List(ref list) = attr.meta else {
+            continue;
+        };
+        if !is_simple_path(&list.path, "animate") {
+            continue;
+        }
+        let parsed_attr = parse2::<AnimateAttributeInput>(list.tokens.clone())?;
+        let attr_name = parsed_attr.name.to_string();
+        match attr_name.as_str() {
+            "remote" => {
+                let Lit::Str(value) = parsed_attr.value else {
+                    return Err(Error::new(
+                        parsed_attr.span,
+                        "Expected value of 'remote' attribute to be a string.",
+                    ));
+                };
+                remote_path = parse_str::<Path>(&value.value())?;
+            }
+            _ => {
+                return Err(Error::new(
+                    list.span(),
+                    format!("Unrecognized animation attribute: {attr_name}"),
+                ))
+            }
+        };
+    }
+    let remote_name = &remote_path.segments.last().unwrap().ident;
 
     let anim_fields = fields
         .named
@@ -41,11 +76,11 @@ fn expand_animate(input: DeriveInput) -> Result<TokenStream2> {
         anim_fields
     };
 
-    let builder_shortcuts = builder_shortcuts(&name);
-    let timeline_struct = timeline_struct(&name, &vis, &anim_fields)?;
-    let timeline_builder_impl = timeline_builder_impl(&name, &anim_fields);
-    let keyframe_struct = keyframe_struct(&name, &vis, &anim_fields);
-    let keyframe_builder = keyframe_builder(&name, &vis, &anim_fields);
+    let builder_shortcuts = builder_shortcuts(&name, remote_name, &anim_fields);
+    let timeline_struct = timeline_struct(remote_name, &vis, &anim_fields)?;
+    let timeline_builder_impl = timeline_builder_impl(remote_name, &anim_fields);
+    let keyframe_struct = keyframe_struct(remote_name, &vis, &anim_fields);
+    let keyframe_builder = keyframe_builder(&remote_path, &vis, &anim_fields);
     let animate = quote! {
         #builder_shortcuts
         #timeline_struct
@@ -57,9 +92,28 @@ fn expand_animate(input: DeriveInput) -> Result<TokenStream2> {
     Ok(animate)
 }
 
-fn builder_shortcuts(target_name: &Ident) -> TokenStream2 {
-    let builder_name = format_ident!("{target_name}KeyframeBuilder");
-    let data_name = format_ident!("{target_name}KeyframeData");
+fn builder_shortcuts(
+    target_name: &Ident,
+    remote_name: &Ident,
+    target_fields: &[&Field],
+) -> TokenStream2 {
+    let builder_name = format_ident!("{remote_name}KeyframeBuilder");
+    let data_name = format_ident!("{remote_name}KeyframeData");
+    // When using remote, the decorated struct's fields are never accessed directly.
+    // This pattern is used to prevent dead code warnings and is adapted from Serde's version:
+    // https://github.com/serde-rs/serde/blob/9cdf33202977df68289a42b1ba30885b6b2abe44/serde_derive/src/pretend.rs
+    let fake_access = if target_name != remote_name {
+        let field_names = target_fields.iter().map(|f| &f.ident);
+        let placeholders = (0usize..).map(|i| format_ident!("__v{}", i));
+        quote! {
+            match std::option::Option::None::<&#target_name> {
+                std::option::Option::Some(#target_name { #(#field_names: #placeholders),*,.. }) => {},
+                _ => {}
+            }
+        }
+    } else {
+        quote!()
+    };
     quote! {
         impl #target_name {
             pub fn keyframe(normalized_time: f32) -> #builder_name {
@@ -67,6 +121,7 @@ fn builder_shortcuts(target_name: &Ident) -> TokenStream2 {
             }
 
             pub fn timeline() -> ::mina::TimelineConfiguration<#data_name> {
+                #fake_access
                 ::mina::TimelineConfiguration::default()
             }
         }
@@ -75,7 +130,9 @@ fn builder_shortcuts(target_name: &Ident) -> TokenStream2 {
 
 fn is_animatable(field: &Field) -> bool {
     field.attrs.iter().any(|attr| {
-        let Meta::Path(ref path) = attr.meta else { return false; };
+        let Meta::Path(ref path) = attr.meta else {
+            return false;
+        };
         is_simple_path(path, "animate")
     })
 }
@@ -87,12 +144,13 @@ fn is_simple_path<'a>(path: &Path, name: impl Into<&'a str>) -> bool {
 }
 
 fn keyframe_builder(
-    target_name: &Ident,
+    remote_path: &Path,
     target_visibility: &Visibility,
     target_fields: &[&Field],
 ) -> TokenStream2 {
-    let builder_name = format_ident!("{target_name}KeyframeBuilder");
-    let data_name = format_ident!("{target_name}KeyframeData");
+    let remote_name = &remote_path.segments.last().unwrap().ident;
+    let builder_name = format_ident!("{remote_name}KeyframeBuilder");
+    let data_name = format_ident!("{remote_name}KeyframeData");
     let setters = target_fields.iter().map(|f| {
         let Field {
             ident: field_name,
@@ -107,7 +165,9 @@ fn keyframe_builder(
         }
     });
     let from_data_assignments = target_fields.iter().map(|f| {
-        let Field { ident: field_name, .. } = f;
+        let Field {
+            ident: field_name, ..
+        } = f;
         quote! { self.data.#field_name = std::option::Option::Some(values.#field_name) }
     });
     quote! {
@@ -126,7 +186,7 @@ fn keyframe_builder(
                 }
             }
 
-            fn values_from(mut self, normalized_time: f32, values: &#target_name) -> Self {
+            fn values_from(mut self, normalized_time: f32, values: &#remote_path) -> Self {
                 #(#from_data_assignments);*;
                 self
             }
@@ -151,11 +211,11 @@ fn keyframe_builder(
 }
 
 fn keyframe_struct(
-    target_name: &Ident,
+    remote_name: &Ident,
     target_visibility: &Visibility,
     target_fields: &[&Field],
 ) -> TokenStream2 {
-    let name = format_ident!("{target_name}KeyframeData");
+    let name = format_ident!("{remote_name}KeyframeData");
     let fields = target_fields.iter().map(|f| {
         let Field { ident, ty, .. } = f;
         quote! { #ident: std::option::Option<#ty> }
@@ -169,9 +229,9 @@ fn keyframe_struct(
     values_struct
 }
 
-fn timeline_builder_impl(target_name: &Ident, target_fields: &[&Field]) -> TokenStream2 {
-    let timeline_name = format_ident!("{target_name}Timeline");
-    let keyframe_data_name = format_ident!("{target_name}KeyframeData");
+fn timeline_builder_impl(remote_name: &Ident, target_fields: &[&Field]) -> TokenStream2 {
+    let timeline_name = format_ident!("{remote_name}Timeline");
+    let keyframe_data_name = format_ident!("{remote_name}KeyframeData");
     let sub_timeline_initializers = target_fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
         let sub_name = format_ident!("t_{field_name}");
@@ -209,11 +269,11 @@ fn timeline_builder_impl(target_name: &Ident, target_fields: &[&Field]) -> Token
 }
 
 fn timeline_struct(
-    target_name: &Ident,
+    remote_name: &Ident,
     target_visibility: &Visibility,
     target_fields: &[&Field],
 ) -> Result<TokenStream2> {
-    let name = format_ident!("{target_name}Timeline");
+    let name = format_ident!("{remote_name}Timeline");
     let fields = target_fields
         .iter()
         .map(|f| {
@@ -250,7 +310,7 @@ fn timeline_struct(
         }
 
         impl ::mina::Timeline for #name {
-            type Target = #target_name;
+            type Target = #remote_name;
 
             fn cycle_duration(&self) -> Option<f32> {
                 Some(self.timescale.get_cycle_duration())
@@ -289,4 +349,23 @@ fn timeline_struct(
         }
     };
     Ok(timeline_struct)
+}
+
+#[cfg_attr(feature = "parse-debug", derive(Debug))]
+struct AnimateAttributeInput {
+    span: Span,
+    name: Ident,
+    _separator: Token![=],
+    value: Lit,
+}
+
+impl Parse for AnimateAttributeInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(Self {
+            span: input.span(),
+            name: input.parse()?,
+            _separator: input.parse()?,
+            value: input.parse()?,
+        })
+    }
 }

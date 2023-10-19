@@ -268,6 +268,57 @@ pub use mina_macros::animator;
 /// timeline.update(&mut values, 3.0);
 /// assert_eq!(values, Style { alpha: 0.4, size: 10 });
 /// ```
+///
+/// # Remote
+///
+/// Since it is not possible to run a derive macro on an external type, a `remote` attribute exists
+/// to support the same auto-implemented [Timeline] and [TimelineBuilder] types for external types.
+///
+/// One example, which also appears in some of the
+/// [examples](https://github.com/focustense/mina/tree/main/examples/bevy_app), is
+/// [Bevy's](bevyengine.org) `Transform` type. It is very common to want to animate this component,
+/// and all its properties are [Lerp]able, but because it is a foreign type, it cannot be used
+/// directly with `#[derive(Animate)]`.
+///
+/// Note that this is not primarily a problem with Rust's
+/// [orphan rule](https://doc.rust-lang.org/book/traits.html#rules-for-implementing-traits), since
+/// `Animate` does not need to add any traits to the original struct; it is simply that any derive
+/// macro needs to run on the declaration.
+///
+/// To work around this, we can define a proxy type with the same members as the type we wish to
+/// animate, and specify that it is remote:
+///
+/// ```
+/// // In real-world usage, this would be in another crate.
+/// mod external {
+///     pub struct Style {
+///         pub alpha: f32,
+///         pub size: u16,
+///     }
+/// }
+///
+/// use external::Style;
+/// use mina::prelude::*;
+///
+/// #[derive(Animate)]
+/// #[animate(remote = "Style")]
+/// struct StyleProxy {
+///     alpha: f32,
+///     size: u16,
+/// }
+///
+/// let fade_in = timeline!(StyleProxy 5s from { alpha: 0.1 } to { alpha: 1.0 });
+/// let mut style = Style { alpha: 0.5, size: 12 };
+/// fade_in.update(&mut style, 1.0);
+///
+/// assert_eq!(style.alpha, 0.28);
+/// assert_eq!(style.size, 12);
+/// ```
+///
+/// Note that although we must specify `StyleProxy` as the timeline target in macro usage (or when
+/// calling builder methods manually), the resulting [Timeline] instance has a target of `Style` and
+/// operates directly on `Style` structs. There is no need to pass around newtypes or other
+/// wrappers, or provide any conversion methods.
 pub use mina_macros::Animate;
 
 /// Configures and creates a [`Timeline`] for an [`Animate`](macro@Animate) type.
