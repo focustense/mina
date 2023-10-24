@@ -28,7 +28,8 @@ pub struct ArrowButtonPlugin;
 
 impl Plugin for ArrowButtonPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(AnimationPlugin::<ArrowButton>::new().add_selection_key::<Interaction>())
+        app.add_plugins(AnimationPlugin::<ArrowButton>::new())
+            .register_animation_key::<ArrowButton, Interaction>()
             .add_systems(
                 Update,
                 (arrow_button_picking.in_set(PickSet::Backend), draw_arrows),

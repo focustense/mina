@@ -6,5 +6,5 @@ pub use crate::{
         AnimationChain, AnimationChainBuilder, AnimationSelector, AnimationSelectorBuilder,
     },
     traits::*,
-    AnimationPlugin,
+    AnimationAppExt, AnimationPlugin,
 };

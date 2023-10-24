@@ -77,8 +77,8 @@
 //!         .add_plugins((
 //!             DefaultPlugins,
 //!             AnimationPlugin::<Transform>::new()
-//!                 .add_selection_key::<GameState>()
 //!         ))
+//!         .register_animation_key::<Transform, GameState>()
 //!         .add_systems(Startup, setup)
 //!         .run();
 //! }
@@ -140,33 +140,13 @@ mod traits;
 #[derive(Default)]
 pub struct AnimationPlugin<T: Component> {
     phantom: PhantomData<T>,
-    registrations: Vec<Box<dyn Registration>>,
 }
 
 impl<T: Component> AnimationPlugin<T> {
     pub fn new() -> Self {
         Self {
             phantom: PhantomData,
-            registrations: Vec::new(),
         }
-    }
-}
-
-impl<T: Component> AnimationPlugin<T> {
-    /// Enables state-driven animation of the [Component] type `T` using an animation key `K`.
-    ///
-    /// Once a key is registered, an [`AnimationSelector<K, T>`] can be added to the same entity as
-    /// the [`Animator<T>`], and updating the selector's [AnimationSelector::timeline_key] will
-    /// transition (blend) into the new timeline.
-    pub fn add_selection_key<K: AnimationKey>(mut self) -> Self {
-        self.registrations
-            .push(Box::new(RegistrationImpl::new(|app| {
-                app.add_systems(
-                    Update,
-                    (chain_animations::<K, T>, select_animation::<K, T>).before(animate::<T>),
-                );
-            })));
-        self
     }
 }
 
@@ -174,28 +154,23 @@ impl<T: Component> Plugin for AnimationPlugin<T> {
     fn build(&self, app: &mut App) {
         app.add_event::<AnimationStateChanged>()
             .add_systems(Update, animate::<T>);
-        for registration in &self.registrations {
-            registration.apply(app);
-        }
     }
 }
 
-trait Registration: Send + Sync {
-    fn apply(&self, app: &mut App);
+/// Extends [App] with additional registration methods for animation behaviors.
+pub trait AnimationAppExt {
+    /// Registers a key type to be used with the
+    /// [AnimationSelector](crate::selection::AnimationSelector) and
+    /// [AnimationChain](crate::selection::AnimationChain) components.
+    fn register_animation_key<T: Component, K: AnimationKey>(&mut self) -> &mut Self;
 }
 
-struct RegistrationImpl<R: Fn(&mut App)> {
-    register: R,
-}
-
-impl<R: Fn(&mut App)> RegistrationImpl<R> {
-    fn new(register: R) -> Self {
-        Self { register }
-    }
-}
-
-impl<R: Fn(&mut App) + Send + Sync> Registration for RegistrationImpl<R> {
-    fn apply(&self, app: &mut App) {
-        (self.register)(app);
+impl AnimationAppExt for App {
+    fn register_animation_key<T: Component, K: AnimationKey>(&mut self) -> &mut Self {
+        self.add_systems(
+            Update,
+            (chain_animations::<K, T>, select_animation::<K, T>).before(animate::<T>),
+        );
+        self
     }
 }
