@@ -150,7 +150,7 @@ pub use mina_core::{
     easing::{Easing, EasingFunction},
     interpolation::Lerp,
     timeline::{
-        Keyframe, KeyframeBuilder, MergedTimeline, Repeat, Timeline,
+        Animate, Keyframe, KeyframeBuilder, MergedTimeline, Repeat, Timeline,
         TimelineBuilder, TimelineConfiguration,
     },
 };

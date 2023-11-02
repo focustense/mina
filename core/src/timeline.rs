@@ -79,6 +79,20 @@ pub trait Timeline {
     fn update(&self, values: &mut Self::Target, time: f32);
 }
 
+/// Trait for a type that can create an animation [`Timeline`] via the [`TimelineConfiguration`] and
+/// [`TimelineBuilder`] helpers.
+pub trait Animate {
+    /// Builder type used to create individual keyframes; also determines the timeline type.
+    type KeyframeBuilder: KeyframeBuilder;
+
+    /// Creates a [`KeyframeBuilder`] that will build a timeline-appropriate [`Keyframe`].
+    fn keyframe(normalized_time: f32) -> Self::KeyframeBuilder;
+
+    /// Creates a [`TimelineConfiguration`] that will build an animation timeline for the type
+    /// implementing this `Animate` trait.
+    fn timeline() -> TimelineConfiguration<<Self::KeyframeBuilder as KeyframeBuilder>::Data>;
+}
+
 /// Trait for a builder that creates typed [`Timeline`] instances.
 ///
 /// This is meant to be implemented for the specific [`TimelineConfiguration`] whose generic

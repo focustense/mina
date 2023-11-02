@@ -115,12 +115,14 @@ fn builder_shortcuts(
         quote!()
     };
     quote! {
-        impl #target_name {
-            pub fn keyframe(normalized_time: f32) -> #builder_name {
+        impl Animate for #target_name {
+            type KeyframeBuilder = #builder_name;
+
+            fn keyframe(normalized_time: f32) -> #builder_name {
                 #builder_name::new(normalized_time)
             }
 
-            pub fn timeline() -> ::mina::TimelineConfiguration<#data_name> {
+            fn timeline() -> ::mina::TimelineConfiguration<#data_name> {
                 #fake_access
                 ::mina::TimelineConfiguration::default()
             }
