@@ -127,19 +127,20 @@ fn builder_shortcuts(
     quote! {
         impl Animate for #target_name {
             type Timeline = #timeline_name;
+            type TimelineBuilder = ::mina::TimelineConfiguration<#data_name>;
             type KeyframeBuilder = #builder_name;
 
-            fn keyframe(normalized_time: f32) -> #builder_name {
+            fn keyframe(normalized_time: f32) -> Self::KeyframeBuilder {
                 #builder_name::new(normalized_time)
             }
 
-            fn keyframe_from(target: &#remote_name, normalized_time: f32) -> #builder_name {
+            fn keyframe_from(target: &#remote_name, normalized_time: f32) -> Self::KeyframeBuilder {
                 let mut keyframe = Self::keyframe(normalized_time);
                 #(#as_keyframe_setters)*
                 keyframe
             }
 
-            fn timeline() -> ::mina::TimelineConfiguration<#data_name> {
+            fn timeline() -> Self::TimelineBuilder {
                 #fake_access
                 ::mina::TimelineConfiguration::default()
             }

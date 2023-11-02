@@ -81,10 +81,14 @@ pub trait Timeline {
 
 /// Trait for a type that can create an animation [`Timeline`] via the [`TimelineConfiguration`] and
 /// [`TimelineBuilder`] helpers.
-pub trait Animate
-{
+pub trait Animate {
     /// Type of [Timeline] that is used to animate the [Self::Target].
     type Timeline: Timeline;
+    /// Type of builder used to configure and generate a [Self::Timeline].
+    type TimelineBuilder: TimelineBuilder<Self::Timeline>
+        + TimelineConfigurationBuilder<
+            KeyframeData = <Self::KeyframeBuilder as KeyframeBuilder>::Data,
+        >;
     /// Builder type used to create individual keyframes; also determines the timeline type.
     type KeyframeBuilder: KeyframeBuilder;
 
@@ -100,7 +104,7 @@ pub trait Animate
 
     /// Creates a [`TimelineConfiguration`] that will build an animation timeline for the type
     /// implementing this `Animate` trait.
-    fn timeline() -> TimelineConfiguration<<Self::KeyframeBuilder as KeyframeBuilder>::Data>;
+    fn timeline() -> Self::TimelineBuilder;
 }
 
 /// Trait for a builder that creates typed [`Timeline`] instances.
@@ -180,7 +184,7 @@ impl<Data: Clone + Debug> From<TimelineConfiguration<Data>> for TimelineBuilderA
     }
 }
 
-/// Configuration and fluent builder interface for a [`Timeline`] type.
+/// Configuration and fluent builder trait for a [`Timeline`] type.
 ///
 /// Works with [`TimelineBuilder`] to aid in the creation of timelines. `TimelineBuilder` cannot be
 /// implemented ahead of time, because it depends on the specific set of animation properties;
@@ -189,6 +193,54 @@ impl<Data: Clone + Debug> From<TimelineConfiguration<Data>> for TimelineBuilderA
 /// corresponds to the specific timeline being created.
 ///
 /// Refer to the `macroless_timeline` example for details on how the two are connected.
+pub trait TimelineConfigurationBuilder {
+    /// Data type used for keyframes in this timeline.
+    ///
+    /// This is different from the [`Timeline::Target`]; keyframes are (in normal use) generated
+    /// types with all fields converted to be [`Option`], so that only fields with values that are
+    /// explicitly specified will propagate to the target.
+    type KeyframeData;
+
+    /// Configures the default easing for this timeline.
+    ///
+    /// The default easing is applied until a [`Keyframe`] overrides it. Once a frame specifies its
+    /// own easing, that becomes the new default until another frame overrides it again, etc. If no
+    /// keyframes specify their own easing, then this easing applies to every frame.
+    fn default_easing(self, default_easing: Easing) -> Self;
+
+    /// Configures the delay, in seconds, before the animation will start.
+    ///
+    /// Delay is applied once at the beginning of the timeline, and does not contribute to the
+    /// [`duration_seconds`](Self::duration_seconds), nor does it apply to any cycles after the
+    /// first if a [`repeat`](Self::repeat) setting is specified.
+    fn delay_seconds(self, delay_seconds: f32) -> Self;
+
+    /// Configures the animation duration, in seconds.
+    ///
+    /// If the animation [repeats](Self::repeat), this is the duration of each cycle. If the
+    /// animation [reverses](Self::reverse), regardless of whether or not it repeats, then the first
+    /// half of the duration is used for the forward animation and the second half is used for the
+    /// reverse animation.
+    fn duration_seconds(self, duration_seconds: f32) -> Self;
+
+    /// Adds a single [`Keyframe`] to the animation, using the supplied builder to create the
+    /// keyframe along with its specific typed data.
+    fn keyframe(self, builder: impl KeyframeBuilder<Data = Self::KeyframeData>) -> Self;
+
+    /// Configures the number of repetitions (cycles).
+    fn repeat(self, repeat: Repeat) -> Self;
+
+    /// Configures whether or not the animation should automatically reverse.
+    ///
+    /// Reversing takes up the second half of any given cycle and uses the same keyframes, easing
+    /// and other timing properties as the normal forward animation.
+    fn reverse(self, reverse: bool) -> Self;
+}
+
+/// Standard [`TimelineConfigurationBuilder`] implementation using backing fields.
+///
+/// This type is normally used in generate code (derive macros); you should not need to construct
+/// instances directly.
 #[derive(Clone, Debug)]
 pub struct TimelineConfiguration<Data: Clone + Debug> {
     default_easing: Easing,
@@ -212,67 +264,43 @@ impl<Data: Clone + Debug> Default for TimelineConfiguration<Data> {
     }
 }
 
-impl<Data: Clone + Debug> TimelineConfiguration<Data> {
-    /// Configures the default easing for this timeline.
-    ///
-    /// The default easing is applied until a [`Keyframe`] overrides it. Once a frame specifies its
-    /// own easing, that becomes the new default until another frame overrides it again, etc. If no
-    /// keyframes specify their own easing, then this easing applies to every frame.
-    pub fn default_easing(mut self, default_easing: Easing) -> Self {
+impl<Data: Clone + Debug> TimelineConfigurationBuilder for TimelineConfiguration<Data> {
+    type KeyframeData = Data;
+
+    fn default_easing(mut self, default_easing: Easing) -> Self {
         self.default_easing = default_easing;
         self
     }
 
-    /// Configures the delay, in seconds, before the animation will start.
-    ///
-    /// Delay is applied once at the beginning of the timeline, and does not contribute to the
-    /// [`duration_seconds`](Self::duration_seconds), nor does it apply to any cycles after the
-    /// first if a [`repeat`](Self::repeat) setting is specified.
-    pub fn delay_seconds(mut self, delay_seconds: f32) -> Self {
+    fn delay_seconds(mut self, delay_seconds: f32) -> Self {
         self.delay_seconds = delay_seconds;
         self
     }
 
-    /// Configures the animation duration, in seconds.
-    ///
-    /// If the animation [repeats](Self::repeat), this is the duration of each cycle. If the
-    /// animation [reverses](Self::reverse), regardless of whether or not it repeats, then the first
-    /// half of the duration is used for the forward animation and the second half is used for the
-    /// reverse animation.
-    pub fn duration_seconds(mut self, duration_seconds: f32) -> Self {
+    fn duration_seconds(mut self, duration_seconds: f32) -> Self {
         self.duration_seconds = duration_seconds;
         self
     }
 
-    /// Adds a single [`Keyframe`] to the animation, using the supplied builder to create the
-    /// keyframe along with its specific typed data.
-    pub fn keyframe(mut self, builder: impl KeyframeBuilder<Data = Data>) -> Self {
+    fn keyframe(mut self, builder: impl KeyframeBuilder<Data = Self::KeyframeData>) -> Self {
         self.keyframes.push(builder.build());
         self
     }
 
-    /// Configures the number of repetitions (cycles).
-    pub fn repeat(mut self, repeat: Repeat) -> Self {
+    fn repeat(mut self, repeat: Repeat) -> Self {
         self.repeat = repeat;
         self
     }
 
-    /// Configures whether or not the animation should automatically reverse.
-    ///
-    /// Reversing takes up the second half of any given cycle and uses the same keyframes, easing
-    /// and other timing properties as the normal forward animation.
-    pub fn reverse(mut self, reverse: bool) -> Self {
+    fn reverse(mut self, reverse: bool) -> Self {
         self.reverse = reverse;
         self
     }
+}
 
+impl<Data: Clone + Debug> TimelineConfiguration<Data> {
     fn create_timescale(&self) -> TimeScale {
-        TimeScale::new(
-            self.duration_seconds,
-            self.delay_seconds,
-            self.repeat,
-            self.reverse,
-        )
+        TimeScale::new(self.duration_seconds, self.delay_seconds, self.repeat, self.reverse)
     }
 
     fn get_boundary_times(&self) -> Vec<f32> {
@@ -484,9 +512,8 @@ pub fn prepare_frame(
         return None;
     }
     let (normalized_time, enable_start_override) = match timescale.get_position(time) {
-        TimeScalePosition::Active(t, loop_state) => {
-            (t, !loop_state.is_repeating && !loop_state.is_reversing)
-        }
+        TimeScalePosition::Active(t, loop_state) =>
+            (t, !loop_state.is_repeating && !loop_state.is_reversing),
         TimeScalePosition::NotStarted => (0.0, true),
         TimeScalePosition::Ended(t) => (t, false),
     };
