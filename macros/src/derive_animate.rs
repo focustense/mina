@@ -114,12 +114,29 @@ fn builder_shortcuts(
     } else {
         quote!()
     };
+    let as_keyframe_setters = target_fields.iter().map(|f| {
+        let Field {
+            ident: field_name,
+            ..
+        } = f;
+        quote! {
+            keyframe = keyframe.#field_name(target.#field_name);
+        }
+    });
+    let timeline_name = format_ident!("{remote_name}Timeline");
     quote! {
         impl Animate for #target_name {
+            type Timeline = #timeline_name;
             type KeyframeBuilder = #builder_name;
 
             fn keyframe(normalized_time: f32) -> #builder_name {
                 #builder_name::new(normalized_time)
+            }
+
+            fn keyframe_from(target: &#remote_name, normalized_time: f32) -> #builder_name {
+                let mut keyframe = Self::keyframe(normalized_time);
+                #(#as_keyframe_setters)*
+                keyframe
             }
 
             fn timeline() -> ::mina::TimelineConfiguration<#data_name> {

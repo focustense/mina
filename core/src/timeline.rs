@@ -1,8 +1,8 @@
 //! Creation and consumption of [`Timeline`] instances.
 
-use std::cmp::Ordering;
 use crate::easing::Easing;
 use crate::time_scale::{TimeScale, TimeScalePosition};
+use std::cmp::Ordering;
 use std::fmt::Debug;
 
 /// An animator timeline.
@@ -81,12 +81,22 @@ pub trait Timeline {
 
 /// Trait for a type that can create an animation [`Timeline`] via the [`TimelineConfiguration`] and
 /// [`TimelineBuilder`] helpers.
-pub trait Animate {
+pub trait Animate
+{
+    /// Type of [Timeline] that is used to animate the [Self::Target].
+    type Timeline: Timeline;
     /// Builder type used to create individual keyframes; also determines the timeline type.
     type KeyframeBuilder: KeyframeBuilder;
 
     /// Creates a [`KeyframeBuilder`] that will build a timeline-appropriate [`Keyframe`].
     fn keyframe(normalized_time: f32) -> Self::KeyframeBuilder;
+
+    /// Creates a [`KeyframeBuilder`] that will build a timeline-appropriate [`Keyframe`] and starts
+    /// with a copy of the target's current values.
+    fn keyframe_from(
+        target: &<Self::Timeline as Timeline>::Target,
+        normalized_time: f32,
+    ) -> Self::KeyframeBuilder;
 
     /// Creates a [`TimelineConfiguration`] that will build an animation timeline for the type
     /// implementing this `Animate` trait.
@@ -379,26 +389,35 @@ impl<T: Timeline> Timeline for MergedTimeline<T> {
     type Target = T::Target;
 
     fn cycle_duration(&self) -> Option<f32> {
-        self.timelines.iter()
+        self.timelines
+            .iter()
             .map(|t| t.cycle_duration())
             .reduce(|d1, d2| if d1 == d2 { d1 } else { None })
             .flatten()
     }
 
     fn delay(&self) -> f32 {
-        self.timelines.iter().map(|t| t.delay())
+        self.timelines
+            .iter()
+            .map(|t| t.delay())
             .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
             .unwrap_or(0.)
     }
 
     fn duration(&self) -> f32 {
-        self.timelines.iter().map(|t| t.duration())
+        self.timelines
+            .iter()
+            .map(|t| t.duration())
             .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
             .unwrap_or(0.)
     }
 
     fn repeat(&self) -> Repeat {
-        self.timelines.iter().map(|t| t.repeat()).max().unwrap_or(Repeat::None)
+        self.timelines
+            .iter()
+            .map(|t| t.repeat())
+            .max()
+            .unwrap_or(Repeat::None)
     }
 
     fn start_with(&mut self, values: &Self::Target) {
