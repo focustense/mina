@@ -45,6 +45,9 @@ impl AnimationStateChanged {
 /// [Timeline](mina::Timeline) type that can be assigned in [Self::set_timeline].
 #[derive(Component, Default)]
 pub struct Animator<T: Component> {
+    /// Whether or not the animator is currently enabled. If disabled, animations will not progress.
+    /// Setting this property does not change the [Self::state].
+    pub enabled: bool,
     /// The current position of the associated [Timeline](mina::Timeline), i.e. the duration of time
     /// that the current timeline has been active on this component.
     ///
@@ -61,6 +64,7 @@ impl<T: Component> Animator<T> {
     /// Creates a new [Animator] without a [Timeline].
     pub fn new() -> Self {
         Self {
+            enabled: true,
             timeline: None,
             timeline_position: Duration::ZERO,
             state: AnimationState::None,
@@ -70,10 +74,18 @@ impl<T: Component> Animator<T> {
     /// Creates a new [Animator] initialized with the specified [Timeline].
     pub fn with_timeline(timeline: impl SafeTimeline<Target = T>) -> Self {
         Self {
+            enabled: true,
             timeline: Some(Box::new(timeline)),
             timeline_position: Duration::ZERO,
             state: AnimationState::None,
         }
+    }
+
+    /// Disables and returns the animator. Used when creating new instances to prevent the
+    /// animations from running immediately.
+    pub fn as_disabled(mut self) -> Self {
+        self.enabled = false;
+        self
     }
 
     /// Resets this animator so that it starts its configured animation from the first keyframe.
@@ -115,6 +127,9 @@ pub(super) fn animate<T: Component>(
     mut events: EventWriter<AnimationStateChanged>,
 ) {
     for (entity, mut animator) in animators.iter_mut() {
+        if !animator.enabled {
+            continue;
+        }
         if animator.timeline.is_none() {
             if animator.state != AnimationState::None {
                 animator.state = AnimationState::None;
