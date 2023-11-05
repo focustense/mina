@@ -16,9 +16,10 @@ use dyn_clone::clone_box;
 /// Like the `StateAnimator`, this blends animations. When the current key is changed, and a new
 /// timeline is chosen, the timeline will animate from the current properties instead of the values
 /// configured for the first keyframe.
-#[derive(Component)]
+#[derive(Component, Reflect)]
 pub struct AnimationSelector<K: AnimationKey, T: Component> {
     /// Map of state keys to the corresponding animations (timelines).
+    #[reflect(ignore)]
     pub timelines: HashMap<K, Box<dyn SafeTimeline<Target = T>>>,
     /// Key controlling the current animation to play. The key must be present in [Self::timelines],
     /// otherwise no animation will play.
@@ -88,7 +89,7 @@ impl<K: AnimationKey, T: Component> AnimationSelectorBuilder<K, T> {
 /// health and then returning to the normal state. Aside from the most typical "animate and reset"
 /// scenarios, multiple discrete animations can also be chained together, such as attacks in a
 /// combo.
-#[derive(Component, Default)]
+#[derive(Component, Default, Reflect)]
 pub struct AnimationChain<K: AnimationKey> {
     /// Map of ended keys (states) to next keys.
     ///

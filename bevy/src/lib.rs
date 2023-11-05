@@ -120,9 +120,10 @@
 //! refer to the [AnimationChain](crate::selection::AnimationChain) documentation.
 
 use crate::animator::{animate, AnimationState, AnimationStateChanged, Animator};
-use crate::selection::{chain_animations, select_animation};
+use crate::selection::{chain_animations, select_animation, AnimationChain, AnimationSelector};
 use crate::traits::*;
 use bevy::prelude::*;
+use bevy::reflect::TypePath;
 use std::marker::PhantomData;
 
 pub mod prelude;
@@ -152,17 +153,39 @@ impl<T: Component> AnimationPlugin<T> {
 
 impl<T: Component> Plugin for AnimationPlugin<T> {
     fn build(&self, app: &mut App) {
-        app.add_event::<AnimationStateChanged>()
+        app.register_type::<AnimationState>()
+            .register_type::<AnimationStateChanged>()
+            .add_event::<AnimationStateChanged>()
             .add_systems(Update, animate::<T>);
     }
 }
 
 /// Extends [App] with additional registration methods for animation behaviors.
 pub trait AnimationAppExt {
-    /// Registers a key type to be used with the
-    /// [AnimationSelector](crate::selection::AnimationSelector) and
-    /// [AnimationChain](crate::selection::AnimationChain) components.
+    /// Registers a key type to be used with the [AnimationSelector] and [AnimationChain]
+    /// components.
     fn register_animation_key<T: Component, K: AnimationKey>(&mut self) -> &mut Self;
+
+    /// Registers an animator/key combination to be used with Bevy reflection (e.g. inspectors).
+    ///
+    /// Enables reflection on the [AnimationSelector<K, T>] and [AnimationChain<K>] types.
+    ///
+    /// Due to an ancient Rust deficiency, this requires that the component itself have at least a
+    /// [TypePath] implementation: https://github.com/rust-lang/rust/issues/26925
+    fn register_animation_key_reflect<
+        T: Component + TypePath,
+        K: AnimationKey + FromReflect + TypePath,
+    >(
+        &mut self,
+    ) -> &mut Self;
+
+    /// Registers an animator target type to be used with Bevy reflection (e.g. inspectors).
+    ///
+    /// Enables reflection on the [Animator<T>] type.
+    ///
+    /// Due to an ancient Rust deficiency, this requires that the component itself have at least a
+    /// [TypePath] implementation: https://github.com/rust-lang/rust/issues/26925
+    fn register_animator_reflect<T: Component + TypePath>(&mut self) -> &mut Self;
 }
 
 impl AnimationAppExt for App {
@@ -171,6 +194,22 @@ impl AnimationAppExt for App {
             Update,
             (chain_animations::<K, T>, select_animation::<K, T>).before(animate::<T>),
         );
+        self
+    }
+
+    fn register_animation_key_reflect<
+        T: Component + TypePath,
+        K: AnimationKey + FromReflect + TypePath,
+    >(
+        &mut self,
+    ) -> &mut Self {
+        self.register_type::<AnimationSelector<K, T>>()
+            .register_type::<AnimationChain<K>>();
+        self
+    }
+
+    fn register_animator_reflect<T: Component + TypePath>(&mut self) -> &mut Self {
+        self.register_type::<Animator<T>>();
         self
     }
 }

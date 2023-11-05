@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use std::time::Duration;
 
 /// The state of an [Animator].
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Reflect)]
 pub enum AnimationState {
     /// No animation. Either the animator does not have a [Timeline](mina::Timeline), or the
     /// timeline was just added on this frame and the animation system has not run yet.
@@ -23,7 +23,7 @@ pub enum AnimationState {
 }
 
 /// An event that is sent whenever an animator's [Animator::state] changes.
-#[derive(Event)]
+#[derive(Event, Reflect)]
 pub struct AnimationStateChanged {
     /// The entity to which the affected [Animator] is attached.
     pub entity: Entity,
@@ -43,7 +43,7 @@ impl AnimationStateChanged {
 /// In most cases, the component type `T` should also be decorated with
 /// [Animate](mina::prelude::Animate), which will generate the corresponding
 /// [Timeline](mina::Timeline) type that can be assigned in [Self::set_timeline].
-#[derive(Component, Default)]
+#[derive(Component, Reflect)]
 pub struct Animator<T: Component> {
     /// Whether or not the animator is currently enabled. If disabled, animations will not progress.
     /// Setting this property does not change the [Self::state].
@@ -56,8 +56,20 @@ pub struct Animator<T: Component> {
     /// before the end time will not restart it. To manually restart animation using the existing
     /// timeline, call [Self::reset].
     pub timeline_position: Duration,
+    #[reflect(ignore)]
     pub(super) timeline: Option<Box<dyn SafeTimeline<Target = T>>>,
     pub(super) state: AnimationState,
+}
+
+impl<T: Component> Default for Animator<T> {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timeline_position: Duration::ZERO,
+            timeline: None,
+            state: AnimationState::default(),
+        }
+    }
 }
 
 impl<T: Component> Animator<T> {
